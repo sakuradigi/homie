@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KidAI — 作業助手 · 繪本朗讀</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+  :root {
+    --primary: #4F8EF7;
+    --primary-dark: #2D6FD4;
+    --accent: #FF7043;
+    --bg: #F7F9FC;
+    --card: #FFFFFF;
+    --text: #1A1A2E;
+    --muted: #6B7280;
+    --border: #E5E7EB;
+    --success: #10B981;
+    --radius: 14px;
+    --shadow: 0 2px 16px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 8px rgba(0,0,0,0.05); }
+  .logo { font-size: 20px; font-weight: 700; color: var(--primary); letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .lang-toggle { font-size: 13px; color: var(--muted); cursor: pointer; border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; transition: all 0.2s; }
+  .lang-toggle:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* API Key Banner */
+  .api-banner { background: #EEF4FF; border: 1px solid #C7D9FF; margin: 20px 24px 0; border-radius: var(--radius); padding: 14px 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .api-banner .icon { font-size: 20px; }
+  .api-banner p { font-size: 13px; color: #374151; flex: 1; min-width: 200px; }
+  .api-banner p a { color: var(--primary); text-decoration: none; }
+  .api-input-row { display: flex; gap: 8px; width: 100%; margin-top: 8px; }
+  .api-input-row input { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: monospace; outline: none; transition: border 0.2s; }
+  .api-input-row input:focus { border-color: var(--primary); }
+  .api-input-row button { background: var(--primary); color: white; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .api-saved { font-size: 12px; color: var(--success); display: none; align-items: center; gap: 4px; }
+  .api-saved.show { display: flex; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin: 24px 24px 0; background: var(--card); border-radius: var(--radius); padding: 4px; box-shadow: var(--shadow); }
+  .tab { flex: 1; padding: 12px; text-align: center; border-radius: 10px; cursor: pointer; font-size: 15px; font-weight: 500; color: var(--muted); transition: all 0.2s; border: none; background: transparent; }
+  .tab.active { background: var(--primary); color: white; box-shadow: 0 2px 8px rgba(79,142,247,0.3); }
+  .tab-emoji { margin-right: 6px; }
+
+  /* Main content */
+  main { padding: 20px 24px 40px; max-width: 700px; margin: 0 auto; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Upload zone */
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 20px; text-align: center; transition: all 0.2s; background: var(--card); margin-bottom: 16px; }
+  .upload-zone.dragover { border-color: var(--primary); background: #EEF4FF; }
+  .upload-icon { font-size: 36px; margin-bottom: 8px; }
+  .upload-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: var(--muted); }
+  /* Camera buttons */
+  .capture-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .capture-btn { border-radius: 12px; padding: 14px 20px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; display: flex; align-items: center; gap: 8px; flex: 1; max-width: 200px; justify-content: center; transition: opacity 0.2s; }
+  .capture-btn:active { opacity: 0.7; }
+  .capture-btn.camera { background: var(--primary); color: white; }
+  .capture-btn.camera-accent { background: var(--accent); color: white; }
+  .capture-btn.gallery { background: var(--card); color: var(--text); border: 1.5px solid var(--border); }
+  .capture-hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  /* Hidden file inputs */
+  .hidden-input { display: none; }
+  /* Model/settings row */
+  .model-row { background: var(--card); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .model-row label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .model-select { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; min-width: 160px; }
+  .cost-badge { font-size: 12px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 20px; padding: 4px 10px; white-space: nowrap; }
+
+  /* Preview grid */
+  .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .preview-item { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 3/4; background: #eee; }
+  .preview-item img { width: 100%; height: 100%; object-fit: cover; }
+  .preview-item .remove-btn { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .preview-item .page-num { position: absolute; bottom: 4px; left: 6px; background: rgba(0,0,0,0.5); color: white; font-size: 11px; border-radius: 4px; padding: 1px 5px; }
+
+  /* Options */
+  .options-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .option-chip { border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: all 0.2s; background: var(--card); }
+  .option-chip.selected { border-color: var(--primary); background: #EEF4FF; color: var(--primary); font-weight: 500; }
+
+  /* Subject selector */
+  .subject-row { margin-bottom: 16px; }
+  .subject-row label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: block; }
+  .subject-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .subject-chip { border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 13px; cursor: pointer; transition: all 0.2s; background: var(--card); }
+  .subject-chip.selected { border-color: var(--accent); background: #FFF3EF; color: var(--accent); font-weight: 500; }
+
+  /* Action button */
+  .action-btn { width: 100%; padding: 14px; border: none; border-radius: var(--radius); font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .action-btn.primary { background: var(--primary); color: white; }
+  .action-btn.primary:hover { background: var(--primary-dark); }
+  .action-btn.accent { background: var(--accent); color: white; }
+  .action-btn.accent:hover { background: #E64A19; }
+  .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results */
+  .results { margin-top: 20px; }
+  .result-card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); border-left: 4px solid var(--primary); }
+  .result-card.read-card { border-left-color: var(--accent); }
+  .result-page { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .result-content { font-size: 15px; line-height: 1.8; white-space: pre-wrap; }
+  .result-content .q { color: var(--primary); font-weight: 600; }
+  .result-content .a { color: var(--text); }
+
+  /* TTS Controls */
+  .tts-controls { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .tts-btn { border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; background: var(--card); transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+  .tts-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tts-btn.playing { background: var(--accent); color: white; border-color: var(--accent); }
+  .speed-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; }
+  .voice-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; flex: 1; min-width: 140px; }
+
+  /* Paragraph segments */
+  .para-segment { padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background 0.15s; line-height: 1.9; font-size: 15px; }
+  .para-segment:hover { background: #FFF3EF; }
+  .para-segment.active { background: #FFE0D5; }
+
+  /* Error */
+  .error-box { background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius); padding: 14px 16px; font-size: 14px; color: #DC2626; margin-top: 16px; }
+
+  /* Markdown rendered output */
+  .md-body { font-size: 15px; line-height: 1.85; }
+  .md-body h1,.md-body h2,.md-body h3 { font-size: 15px; font-weight: 700; margin: 12px 0 4px; color: var(--primary); }
+  .md-body p { margin-bottom: 10px; }
+  .md-body ul,.md-body ol { padding-left: 20px; margin-bottom: 10px; }
+  .md-body li { margin-bottom: 4px; }
+  .md-body strong { font-weight: 700; }
+  .md-body code { background: #F3F4F6; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+  .md-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  /* Shoot-more bar */
+  .shoot-more-bar { display: flex; align-items: center; gap: 10px; background: #EEF4FF; border: 1px solid #C7D9FF; border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; }
+  .shoot-more-bar .count-badge { background: var(--primary); color: white; border-radius: 20px; padding: 2px 10px; font-size: 13px; font-weight: 700; }
+  .shoot-more-bar .shoot-again-btn { background: var(--primary); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .shoot-more-bar .shoot-again-btn.accent { background: var(--accent); }
+  .shoot-more-bar .clear-btn { color: var(--muted); background: none; border: none; font-size: 13px; cursor: pointer; margin-left: auto; text-decoration: underline; }
+
+  /* History */
+  /* New question button */
+  .new-q-btn { width: 100%; margin-top: 16px; padding: 14px; border: 2px dashed var(--border); border-radius: var(--radius); background: var(--card); font-size: 15px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .new-q-btn:hover { border-color: var(--primary); color: var(--primary); background: #EEF4FF; }
+
+  .history-toggle { font-size: 13px; color: var(--muted); cursor: pointer; display: flex; align-items: center; gap: 6px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .history-toggle:hover { color: var(--primary); }
+  .history-list { margin-top: 10px; display: none; }
+  .history-list.open { display: block; }
+  .history-item { background: var(--card); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; border: 1px solid var(--border); transition: border 0.2s; }
+  .history-item:hover { border-color: var(--primary); }
+  .history-item .h-meta { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .history-item .h-preview { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
+  .empty-state .big-emoji { font-size: 48px; margin-bottom: 12px; }
+
+  /* Progress */
+  .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin: 12px 0; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s; }
+
+  /* ===== MOBILE RWD ===== */
+  @media (max-width: 600px) {
+    /* Layout */
+    main { padding: 12px 12px 100px; }
+    .tabs { margin: 12px 12px 0; }
+    .api-banner { margin: 12px 12px 0; padding: 12px 14px; }
+
+    /* Larger touch targets */
+    .capture-btn { padding: 16px 12px; font-size: 16px; max-width: none; }
+    .tab { padding: 14px 8px; font-size: 14px; }
+    .action-btn { padding: 18px; font-size: 17px; border-radius: 16px; }
+
+    /* Preview thumbnails smaller on narrow screens */
+    .preview-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; }
+
+    /* Result cards full bleed */
+    .result-card { padding: 14px 12px; border-radius: 10px; }
+    .result-content { font-size: 16px; line-height: 2; }
+    .para-segment { font-size: 16px; padding: 10px 8px; }
+
+    /* TTS controls stack vertically */
+    .tts-controls { gap: 8px; }
+    .speed-select, .voice-select { font-size: 14px; padding: 10px 8px; }
+
+    /* Subject chips larger */
+    .subject-chip, .option-chip { padding: 8px 14px; font-size: 14px; }
+
+    /* API input stacks */
+    .api-input-row { flex-direction: column; }
+    .api-input-row button { width: 100%; padding: 12px; font-size: 15px; }
+    .api-input-row input { font-size: 14px; padding: 10px 12px; }
+
+    /* Floating bottom action area so thumb can reach */
+    .sticky-action { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); padding: 12px 16px; border-top: 1px solid var(--border); z-index: 50; box-shadow: 0 -4px 12px rgba(0,0,0,0.06); }
+  }
+
+  /* Safe area for iPhone notch / home bar */
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    @media (max-width: 600px) {
+      .sticky-action { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+      main { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Kid<span>AI</span></div>
+  <button class="lang-toggle" onclick="toggleLang()">EN / 中</button>
+</header>
+
+<!-- API Key Banner -->
+<div class="api-banner" id="apiBanner">
+  <div class="icon">🔑</div>
+  <p id="apiDesc">請輸入您的 <a href="https://aistudio.google.com/app/apikey" target="_blank">Gemini API Key</a>（免費申請，資料僅傳送至 Google，不經過本站）</p>
+  <div class="api-input-row">
+    <input type="password" id="apiKeyInput" placeholder="AIza..." />
+    <button onclick="saveApiKey()">儲存 / Save</button>
+  </div>
+  <div class="api-saved" id="apiSaved">✅ <span id="apiSavedText">API Key 已儲存</span></div>
+</div>
+
+<!-- Hidden file inputs (iOS-safe) -->
+<input class="hidden-input" type="file" id="hwCameraInput" accept="image/*" capture="environment" onchange="handleFileInput(this,'hw')">
+<input class="hidden-input" type="file" id="hwGalleryInput" accept="image/*" multiple onchange="handleFileInput(this,'hw')">
+<input class="hidden-input" type="file" id="rdCameraInput" accept="image/*" capture="environment" onchange="handleFileInput(this,'rd')">
+<input class="hidden-input" type="file" id="rdGalleryInput" accept="image/*" multiple onchange="handleFileInput(this,'rd')">
+
+<div class="tabs" style="max-width:700px;margin-left:auto;margin-right:auto;">
+  <button class="tab active" onclick="switchTab('homework')" id="tab-homework">
+    <span class="tab-emoji">📝</span><span data-zh="解題助手" data-en="Homework">解題助手</span>
+  </button>
+  <button class="tab" onclick="switchTab('reading')" id="tab-reading">
+    <span class="tab-emoji">📖</span><span data-zh="繪本朗讀" data-en="Read Aloud">繪本朗讀</span>
+  </button>
+</div>
+
+<main>
+
+<!-- ===== HOMEWORK PANEL ===== -->
+<div class="panel active" id="panel-homework">
+
+  <div class="upload-zone" id="hwDropzone" ondragover="onDrag(event,'hwDropzone')" ondragleave="offDrag('hwDropzone')" ondrop="onDrop(event,'hw')">
+    <div class="upload-icon">📸</div>
+    <div class="upload-title" data-zh="上傳作業照片" data-en="Upload Homework Photos">上傳作業照片</div>
+    <div class="capture-btns">
+      <button class="capture-btn camera" onclick="document.getElementById('hwCameraInput').click()">
+        📷 <span data-zh="拍照" data-en="Camera">拍照</span>
+      </button>
+      <button class="capture-btn gallery" onclick="document.getElementById('hwGalleryInput').click()">
+        🖼️ <span data-zh="從相簿選" data-en="Gallery">從相簿選</span>
+      </button>
+    </div>
+    <div class="capture-hint" data-zh="拍照可連續按多次累加頁面 · 或拖曳圖片至此" data-en="Tap camera multiple times to add pages · or drag & drop">拍照可連續按多次累加頁面 · 或拖曳圖片至此</div>
+  </div>
+
+  <div id="hwShootBar" class="shoot-more-bar" style="display:none">
+    <span class="count-badge" id="hwCount">0 張</span>
+    <span style="font-size:13px;color:#374151;">已加入，繼續拍下一頁？</span>
+    <button class="shoot-again-btn" onclick="document.getElementById('hwCameraInput').click()">📷 再拍一張</button>
+    <button class="clear-btn" onclick="clearImages('hw')">清除全部</button>
+  </div>
+
+  <div class="preview-grid" id="hwPreview"></div>
+
+  <div class="model-row">
+    <label data-zh="模型" data-en="Model">模型</label>
+    <select class="model-select" id="modelSelect" onchange="updateCostBadge()">
+      <option value="gemini-2.0-flash">Gemini 2.0 Flash（預設・最省）</option>
+      <option value="gemini-3.5-flash">Gemini 3.5 Flash ✨ 最新・更準</option>
+      <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash（平衡）</option>
+      <option value="gemini-2.5-pro-preview-06-05">Gemini 2.5 Pro（最準・較貴）</option>
+    </select>
+    <span class="cost-badge" id="costBadge">~$0.001 / 次</span>
+  </div>
+
+  <div class="subject-row">
+    <label data-zh="科目（選填，幫助 AI 更準確回答）" data-en="Subject (optional)">科目（選填，幫助 AI 更準確回答）</label>
+    <div class="subject-chips" id="subjectChips">
+      <div class="subject-chip selected" onclick="toggleSubject(this)" data-subject="">自動判斷</div>
+      <div class="subject-chip" onclick="toggleSubject(this)" data-subject="數學">數學</div>
+      <div class="subject-chip" onclick="toggleSubject(this)" data-subject="國語">國語</div>
+      <div class="subject-chip" onclick="toggleSubject(this)" data-subject="英語">英語</div>
+      <div class="subject-chip" onclick="toggleSubject(this)" data-subject="生活/自然">生活/自然</div>
+    </div>
+  </div>
+
+  <div id="hwProgress" class="progress-bar" style="display:none"><div class="progress-fill" id="hwProgressFill" style="width:0%"></div></div>
+
+  <div class="sticky-action">
+    <button class="action-btn primary" id="hwBtn" onclick="runHomework()">
+      <span>🔍</span> <span data-zh="開始解題" data-en="Analyze Homework">開始解題</span>
+    </button>
+  </div>
+
+  <div id="hwResults" class="results"></div>
+
+  <!-- History -->
+  <div class="history-toggle" onclick="toggleHistory('hw')">
+    🕐 <span id="hwHistoryLabel">最近紀錄</span> ▾
+  </div>
+  <div class="history-list" id="hwHistoryList"></div>
+</div>
+
+<!-- ===== READING PANEL ===== -->
+<div class="panel" id="panel-reading">
+
+  <div class="upload-zone" id="rdDropzone" ondragover="onDrag(event,'rdDropzone')" ondragleave="offDrag('rdDropzone')" ondrop="onDrop(event,'rd')">
+    <div class="upload-icon">📚</div>
+    <div class="upload-title" data-zh="上傳繪本照片" data-en="Upload Picture Book Pages">上傳繪本照片</div>
+    <div class="capture-btns">
+      <button class="capture-btn camera-accent" onclick="document.getElementById('rdCameraInput').click()">
+        📷 <span data-zh="拍照" data-en="Camera">拍照</span>
+      </button>
+      <button class="capture-btn gallery" onclick="document.getElementById('rdGalleryInput').click()">
+        🖼️ <span data-zh="從相簿選" data-en="Gallery">從相簿選</span>
+      </button>
+    </div>
+    <div class="capture-hint" data-zh="拍照可連續按多次累加頁面 · 會自動去除頁碼等雜訊" data-en="Tap camera multiple times to add pages · page numbers auto-removed">拍照可連續按多次累加頁面 · 會自動去除頁碼等雜訊</div>
+  </div>
+
+  <div id="rdShootBar" class="shoot-more-bar" style="display:none">
+    <span class="count-badge" id="rdCount">0 張</span>
+    <span style="font-size:13px;color:#374151;">已加入，繼續拍下一頁？</span>
+    <button class="shoot-again-btn accent" onclick="document.getElementById('rdCameraInput').click()">📷 再拍一張</button>
+    <button class="clear-btn" onclick="clearImages('rd')">清除全部</button>
+  </div>
+
+  <div class="preview-grid" id="rdPreview"></div>
+
+  <div class="options-row">
+    <div class="option-chip selected" onclick="toggleChip(this,'rdLang')" data-group="rdLang" data-val="zh" data-zh="中文朗讀" data-en="Chinese">中文朗讀</div>
+    <div class="option-chip" onclick="toggleChip(this,'rdLang')" data-group="rdLang" data-val="en" data-zh="英文朗讀" data-en="English">英文朗讀</div>
+  </div>
+
+  <div id="rdProgress" class="progress-bar" style="display:none"><div class="progress-fill" id="rdProgressFill" style="width:0%"></div></div>
+
+  <div class="sticky-action">
+    <button class="action-btn accent" id="rdBtn" onclick="runReading()">
+      <span>🔊</span> <span data-zh="擷取文字並朗讀" data-en="Extract & Read Aloud">擷取文字並朗讀</span>
+    </button>
+  </div>
+
+  <div id="rdResults" class="results"></div>
+
+  <!-- History -->
+  <div class="history-toggle" onclick="toggleHistory('rd')">
+    🕐 <span id="rdHistoryLabel">最近紀錄</span> ▾
+  </div>
+  <div class="history-list" id="rdHistoryList"></div>
+</div>
+
+</main>
+
+<script>
+// ===== STATE =====
+let apiKey = localStorage.getItem('gemini_api_key') || '';
+let lang = 'zh';
+let hwImages = [], rdImages = [];
+let selectedSubject = '';
+let ttsUtterance = null;
+let currentSegments = [];
+let currentSegIdx = -1;
+
+// ===== INIT =====
+window.onload = () => {
+  if (apiKey) {
+    document.getElementById('apiKeyInput').value = apiKey;
+    showApiSaved();
+  }
+  if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = () => {};
+  }
+  // Load history counts
+  loadHistoryUI('hw');
+  loadHistoryUI('rd');
+};
+
+// ===== LANG =====
+function toggleLang() {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  document.querySelectorAll('[data-zh]').forEach(el => {
+    el.textContent = el.getAttribute('data-' + lang);
+  });
+}
+
+// ===== API KEY =====
+function saveApiKey() {
+  apiKey = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem('gemini_api_key', apiKey);
+  showApiSaved();
+}
+function showApiSaved() {
+  const el = document.getElementById('apiSaved');
+  el.classList.add('show');
+}
+
+// ===== TABS =====
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ===== DRAG & DROP =====
+function onDrag(e, id) { e.preventDefault(); document.getElementById(id).classList.add('dragover'); }
+function offDrag(id) { document.getElementById(id).classList.remove('dragover'); }
+function onDrop(e, prefix) {
+  e.preventDefault();
+  offDrag(prefix === 'hw' ? 'hwDropzone' : 'rdDropzone');
+  addImages(e.dataTransfer.files, prefix);
+}
+
+// ===== IMAGE HANDLING =====
+// iOS-safe: reset input value after each use so onChange fires again on same file
+function handleFileInput(input, prefix) {
+  addImages(input.files, prefix);
+  // Reset so the same file/camera can be triggered again
+  setTimeout(() => { input.value = ''; }, 200);
+}
+
+function addImages(files, prefix) {
+  const arr = prefix === 'hw' ? hwImages : rdImages;
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      arr.push({ file, dataUrl: e.target.result });
+      renderPreview(prefix);
+      updateShootBar(prefix);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderPreview(prefix) {
+  const arr = prefix === 'hw' ? hwImages : rdImages;
+  const container = document.getElementById(prefix === 'hw' ? 'hwPreview' : 'rdPreview');
+  container.innerHTML = '';
+  arr.forEach((img, i) => {
+    const div = document.createElement('div');
+    div.className = 'preview-item';
+    div.innerHTML = `<img src="${img.dataUrl}" /><button class="remove-btn" onclick="removeImage('${prefix}',${i})">✕</button><div class="page-num">P${i+1}</div>`;
+    container.appendChild(div);
+  });
+}
+
+function removeImage(prefix, idx) {
+  if (prefix === 'hw') hwImages.splice(idx, 1);
+  else rdImages.splice(idx, 1);
+  renderPreview(prefix);
+  updateShootBar(prefix);
+}
+
+function clearImages(prefix) {
+  if (prefix === 'hw') hwImages = [];
+  else rdImages = [];
+  renderPreview(prefix);
+  updateShootBar(prefix);
+}
+
+function updateShootBar(prefix) {
+  const arr = prefix === 'hw' ? hwImages : rdImages;
+  const bar = document.getElementById(prefix + 'ShootBar');
+  const countEl = document.getElementById(prefix + 'Count');
+  if (arr.length > 0) {
+    bar.style.display = 'flex';
+    countEl.textContent = arr.length + ' 張';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+// ===== SUBJECT CHIPS =====
+function toggleSubject(el) {
+  document.querySelectorAll('.subject-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedSubject = el.dataset.subject;
+}
+
+// ===== OPTION CHIPS =====
+function toggleChip(el, group) {
+  document.querySelectorAll(`[data-group="${group}"]`).forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// ===== MODEL & COST =====
+const MODEL_COSTS = {
+  'gemini-2.0-flash':                   { label: '~$0.001 / 次', note: '快速・免費額度最多' },
+  'gemini-3.5-flash':                   { label: '~$0.005 / 次', note: '最新・更強・2026 I/O發布' },
+  'gemini-2.5-flash-preview-05-20':     { label: '~$0.003 / 次', note: '平衡速度與準確度' },
+  'gemini-2.5-pro-preview-06-05':       { label: '~$0.02 / 次',  note: '最準確・適合複雜題目' },
+};
+
+function getSelectedModel() {
+  return document.getElementById('modelSelect')?.value || 'gemini-2.0-flash';
+}
+
+function updateCostBadge() {
+  const model = getSelectedModel();
+  const info = MODEL_COSTS[model];
+  const badge = document.getElementById('costBadge');
+  if (badge && info) badge.textContent = info.label;
+}
+
+// ===== GEMINI API =====
+async function callGemini(prompt, images) {
+  if (!apiKey) {
+    alert(lang === 'zh' ? '請先輸入並儲存 Gemini API Key！' : 'Please enter your Gemini API Key first!');
+    return null;
+  }
+  const parts = [{ text: prompt }];
+  for (const img of images) {
+    const base64 = img.dataUrl.split(',')[1];
+    const mimeType = img.file.type || 'image/jpeg';
+    parts.push({ inline_data: { mime_type: mimeType, data: base64 } });
+  }
+  const body = { contents: [{ parts }] };
+  const model = getSelectedModel();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || '請求失敗');
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// ===== HOMEWORK =====
+async function runHomework() {
+  if (hwImages.length === 0) {
+    alert(lang === 'zh' ? '請先上傳作業照片！' : 'Please upload homework photos first!');
+    return;
+  }
+  const btn = document.getElementById('hwBtn');
+  const resultsEl = document.getElementById('hwResults');
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner"></div> <span>${lang === 'zh' ? '分析中...' : 'Analyzing...'}</span>`;
+  showProgress('hw');
+  resultsEl.innerHTML = '';
+
+  const subjectHint = selectedSubject ? `這是${selectedSubject}作業。` : '';
+  const prompt = `你是一位親切的台灣國小老師助理，幫助家長批閱孩子的作業。
+${subjectHint}
+請仔細看這${hwImages.length}頁作業圖片，並依照以下格式回答：
+
+1. 先列出每一頁的所有題目。
+2. 針對每一題，給出正確答案，並簡短說明（一句話即可）。
+3. 若有計算題，請給出完整解題步驟。
+4. 若題目有錯誤或缺頁，請說明。
+
+請以繁體中文回答，格式清楚。每題之間請空一行。`;
+
+  try {
+    setProgress('hw', 30);
+    const text = await callGemini(prompt, hwImages);
+    setProgress('hw', 100);
+    if (!text) throw new Error('回應為空');
+    renderHomeworkResult(text);
+  } catch (e) {
+    resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<span>🔍</span> <span>${lang === 'zh' ? '重新解題' : 'Re-analyze'}</span>`;
+    hideProgress('hw');
+  }
+}
+
+function renderHomeworkResult(text) {
+  const resultsEl = document.getElementById('hwResults');
+  const card = document.createElement('div');
+  card.className = 'result-card';
+  card.innerHTML = `<div class="result-page">${lang === 'zh' ? '解題結果' : 'Results'}</div><div class="md-body">${marked.parse(text)}</div>`;
+  resultsEl.appendChild(card);
+  // New question button
+  const btn = document.createElement('button');
+  btn.className = 'new-q-btn';
+  btn.innerHTML = '🔄 ' + (lang === 'zh' ? '新題目（清除照片重新開始）' : 'New Question (clear & restart)');
+  btn.onclick = () => resetPanel('hw');
+  resultsEl.appendChild(btn);
+  saveHistory('hw', text);
+  loadHistoryUI('hw');
+}
+
+// ===== READING =====
+async function runReading() {
+  if (rdImages.length === 0) {
+    alert(lang === 'zh' ? '請先上傳繪本照片！' : 'Please upload picture book photos first!');
+    return;
+  }
+  const readLang = document.querySelector('[data-group="rdLang"].selected')?.dataset.val || 'zh';
+  const btn = document.getElementById('rdBtn');
+  const resultsEl = document.getElementById('rdResults');
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner"></div> <span>${lang === 'zh' ? '辨識中...' : 'Processing...'}</span>`;
+  showProgress('rd');
+  resultsEl.innerHTML = '';
+  stopTTS();
+
+  const langInstr = readLang === 'zh' ? '請辨識繁體中文故事文字' : 'Please extract the English story text';
+  const prompt = `你是一個繪本文字辨識助理。
+${langInstr}。
+請逐頁辨識以下圖片中的故事內容，並：
+1. 去除所有頁碼、書名標題列、出版社資訊等非故事內容。
+2. 保留完整的故事文字，依原本段落分行。
+3. 每頁之間請用「===第N頁===」分隔。
+4. 若某頁沒有文字，請寫「（本頁無文字）」。
+只輸出辨識後的文字，不要加任何說明。`;
+
+  try {
+    setProgress('rd', 30);
+    const text = await callGemini(prompt, rdImages);
+    setProgress('rd', 100);
+    if (!text) throw new Error('回應為空');
+    renderReadingResult(text, readLang);
+  } catch (e) {
+    resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<span>🔊</span> <span>${lang === 'zh' ? '重新擷取' : 'Re-extract'}</span>`;
+    hideProgress('rd');
+  }
+}
+
+function renderReadingResult(text, readLang) {
+  const resultsEl = document.getElementById('rdResults');
+  const pages = text.split(/===第\d+頁===/).filter(p => p.trim());
+  if (pages.length === 0) {
+    resultsEl.innerHTML = `<div class="error-box">${lang === 'zh' ? '無法辨識文字，請確認圖片清晰度' : 'Could not extract text. Please check image quality.'}</div>`;
+    return;
+  }
+
+  // Flatten all paragraphs for TTS
+  currentSegments = [];
+
+  saveHistory('rd', text);
+
+  pages.forEach((pageText, pi) => {
+    const card = document.createElement('div');
+    card.className = 'result-card read-card';
+
+    const pageLabel = document.createElement('div');
+    pageLabel.className = 'result-page';
+    pageLabel.textContent = `第 ${pi + 1} 頁`;
+    card.appendChild(pageLabel);
+
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'result-content';
+
+    const paras = pageText.trim().split('\n').filter(p => p.trim());
+    paras.forEach((para, qi) => {
+      if (!para.trim()) return;
+      const segIdx = currentSegments.length;
+      currentSegments.push(para.trim());
+      const segEl = document.createElement('div');
+      segEl.className = 'para-segment';
+      segEl.dataset.idx = segIdx;
+      segEl.textContent = para.trim();
+      segEl.onclick = () => startTTSFrom(segIdx, readLang);
+      contentDiv.appendChild(segEl);
+    });
+
+    card.appendChild(contentDiv);
+
+    // TTS controls per page
+    const ctrl = buildTTSControls(pi, readLang);
+    card.appendChild(ctrl);
+
+    resultsEl.appendChild(card);
+  });
+
+  // Global controls
+  const globalCtrl = document.createElement('div');
+  globalCtrl.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
+  globalCtrl.innerHTML = `
+    <button class="tts-btn" onclick="startTTSFrom(0,'${readLang}')" style="flex:1;justify-content:center;">▶ ${lang === 'zh' ? '從頭朗讀全文' : 'Read All from Start'}</button>
+    <button class="tts-btn" onclick="stopTTS()" style="justify-content:center;">⏹ ${lang === 'zh' ? '停止' : 'Stop'}</button>
+  `;
+  resultsEl.prepend(globalCtrl);
+
+  // New question button
+  const newQBtn = document.createElement('button');
+  newQBtn.className = 'new-q-btn';
+  newQBtn.innerHTML = '🔄 ' + (lang === 'zh' ? '新繪本（清除照片重新開始）' : 'New Book (clear & restart)');
+  newQBtn.onclick = () => resetPanel('rd');
+  resultsEl.appendChild(newQBtn);
+
+  loadHistoryUI('rd');
+}
+
+function buildTTSControls(pageIdx, readLang) {
+  const div = document.createElement('div');
+  div.className = 'tts-controls';
+  div.innerHTML = `
+    <select class="speed-select" id="speed-${pageIdx}" onchange="updateSpeed()">
+      <option value="0.7">慢 0.7x</option>
+      <option value="0.85">0.85x</option>
+      <option value="1" selected>正常 1x</option>
+      <option value="1.2">1.2x</option>
+      <option value="1.5">快 1.5x</option>
+    </select>
+    <select class="voice-select" id="voice-${pageIdx}">
+      <option value="">預設語音</option>
+    </select>
+  `;
+  // Populate voices
+  setTimeout(() => {
+    const voices = speechSynthesis.getVoices();
+    const sel = div.querySelector(`#voice-${pageIdx}`);
+    const targetLang = readLang === 'zh' ? 'zh' : 'en';
+    voices.filter(v => v.lang.startsWith(targetLang)).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = v.name;
+      sel.appendChild(opt);
+    });
+  }, 300);
+  return div;
+}
+
+// ===== TTS =====
+function startTTSFrom(idx, readLang) {
+  stopTTS();
+  currentSegIdx = idx;
+  speakNext(readLang);
+}
+
+function speakNext(readLang) {
+  if (currentSegIdx >= currentSegments.length) {
+    highlightSegment(-1);
+    return;
+  }
+  const text = currentSegments[currentSegIdx];
+  highlightSegment(currentSegIdx);
+  const u = new SpeechSynthesisUtterance(text);
+
+  // Speed from first speed selector (simplified)
+  const speedEl = document.querySelector('.speed-select');
+  u.rate = speedEl ? parseFloat(speedEl.value) : 1;
+
+  // Voice
+  const voiceEl = document.querySelector('.voice-select');
+  if (voiceEl && voiceEl.value) {
+    const voices = speechSynthesis.getVoices();
+    u.voice = voices.find(v => v.name === voiceEl.value) || null;
+  }
+  u.lang = readLang === 'zh' ? 'zh-TW' : 'en-US';
+
+  u.onend = () => {
+    currentSegIdx++;
+    speakNext(readLang);
+  };
+  ttsUtterance = u;
+  speechSynthesis.speak(u);
+}
+
+function stopTTS() {
+  speechSynthesis.cancel();
+  highlightSegment(-1);
+  currentSegIdx = -1;
+}
+
+function highlightSegment(idx) {
+  document.querySelectorAll('.para-segment').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+}
+
+function updateSpeed() {
+  // If currently playing, it'll apply on next segment
+}
+
+// ===== PROGRESS =====
+function showProgress(prefix) { document.getElementById(prefix+'Progress').style.display = 'block'; setProgress(prefix, 10); }
+function hideProgress(prefix) { document.getElementById(prefix+'Progress').style.display = 'none'; }
+function setProgress(prefix, pct) { document.getElementById(prefix+'ProgressFill').style.width = pct + '%'; }
+
+// ===== RESET =====
+function resetPanel(prefix) {
+  clearImages(prefix);
+  stopTTS();
+  document.getElementById(prefix + 'Results').innerHTML = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ===== HISTORY =====
+const HISTORY_KEY = { hw: 'kidai_hw_history', rd: 'kidai_rd_history' };
+const MAX_HISTORY = 10;
+
+function saveHistory(prefix, text) {
+  const key = HISTORY_KEY[prefix];
+  let arr = [];
+  try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+  arr.unshift({ ts: Date.now(), subject: selectedSubject || '作業', preview: text.slice(0, 80), full: text });
+  if (arr.length > MAX_HISTORY) arr = arr.slice(0, MAX_HISTORY);
+  try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e) {}
+}
+
+function loadHistoryUI(prefix) {
+  const key = HISTORY_KEY[prefix];
+  let arr = [];
+  try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+  const listEl = document.getElementById(prefix + 'HistoryList');
+  const labelEl = document.getElementById(prefix + 'HistoryLabel');
+  if (labelEl) labelEl.textContent = `最近紀錄（${arr.length}）`;
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  if (arr.length === 0) {
+    listEl.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">尚無紀錄</div>';
+    return;
+  }
+  arr.forEach((item, i) => {
+    const d = new Date(item.ts);
+    const timeStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.innerHTML = `<div class="h-meta">${timeStr}　${item.subject}</div><div class="h-preview">${item.preview.replace(/[#*\n]/g,' ')}…</div>`;
+    div.onclick = () => restoreHistory(prefix, item.full);
+    listEl.appendChild(div);
+  });
+}
+
+function restoreHistory(prefix, text) {
+  const resultsEl = document.getElementById(prefix + 'Results');
+  resultsEl.innerHTML = '';
+  if (prefix === 'hw') {
+    renderHomeworkResult(text);
+  } else {
+    renderReadingResult(text, 'zh');
+  }
+  resultsEl.scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleHistory(prefix) {
+  const listEl = document.getElementById(prefix + 'HistoryList');
+  listEl.classList.toggle('open');
+  loadHistoryUI(prefix);
+}
+
+// ===== UTILS =====
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
