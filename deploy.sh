@@ -12,4 +12,4 @@ git push
 
 echo ""
 echo "✅ 已推上 GitHub！"
-echo "🌐 網站約 60 秒後更新：https://sakuradigi.github.io/Kidai"
+echo "🌐 網站約 60 秒後更新：https://sakuradigi.github.io/homie"
