@@ -2,7 +2,7 @@
 
 > 幫助台灣國小家長用 AI 檢查作業、朗讀繪本的網頁工具
 
-🔗 **立即使用**：https://sakuradigi.github.io/Kidai
+🔗 **立即使用**：https://sakuradigi.github.io/homie
 
 不需要安裝任何 App，手機瀏覽器直接開啟即可。
 
