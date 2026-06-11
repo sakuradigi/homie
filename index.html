@@ -73,6 +73,11 @@
   .model-select { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; min-width: 160px; }
   .cost-badge { font-size: 12px; background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; border-radius: 20px; padding: 4px 10px; white-space: nowrap; }
 
+  /* Provider tabs */
+  .provider-tabs { display: flex; gap: 6px; width: 100%; margin-bottom: 10px; }
+  .provider-tab { flex: 1; padding: 8px 4px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--card); color: var(--muted); transition: all 0.2s; text-align: center; }
+  .provider-tab.active { border-color: var(--primary); background: #EEF4FF; color: var(--primary); }
+
   /* Preview grid */
   .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-bottom: 16px; }
   .preview-item { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 3/4; background: #eee; }
@@ -221,7 +226,12 @@
 <!-- API Key Banner -->
 <div class="api-banner" id="apiBanner">
   <div class="icon">🔑</div>
-  <p id="apiDesc">請輸入您的 <a href="https://aistudio.google.com/app/apikey" target="_blank">Gemini API Key</a>（免費申請，資料僅傳送至 Google，不經過本站）</p>
+  <div class="provider-tabs">
+    <button class="provider-tab active" onclick="switchProvider('gemini')" id="ptab-gemini">Gemini</button>
+    <button class="provider-tab" onclick="switchProvider('claude')" id="ptab-claude">Claude</button>
+    <button class="provider-tab" onclick="switchProvider('openai')" id="ptab-openai">OpenAI</button>
+  </div>
+  <p id="apiDesc">請輸入您的 <a id="apiKeyLink" href="https://aistudio.google.com/app/apikey" target="_blank">Gemini API Key</a>（免費申請，資料僅傳送至 Google，不經過本站）</p>
   <div class="api-input-row">
     <input type="password" id="apiKeyInput" placeholder="AIza..." />
     <button onclick="saveApiKey()">儲存 / Save</button>
@@ -274,12 +284,7 @@
 
   <div class="model-row">
     <label data-zh="模型" data-en="Model">模型</label>
-    <select class="model-select" id="modelSelect" onchange="updateCostBadge()">
-      <option value="gemini-2.0-flash">Gemini 2.0 Flash（預設・最省）</option>
-      <option value="gemini-3.5-flash">Gemini 3.5 Flash ✨ 最新・更準</option>
-      <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash（平衡）</option>
-      <option value="gemini-2.5-pro-preview-06-05">Gemini 2.5 Pro（最準・較貴）</option>
-    </select>
+    <select class="model-select" id="modelSelect" onchange="updateCostBadge()"></select>
     <span class="cost-badge" id="costBadge">~$0.001 / 次</span>
   </div>
 
@@ -363,7 +368,6 @@
 
 <script>
 // ===== STATE =====
-let apiKey = localStorage.getItem('gemini_api_key') || '';
 let lang = 'zh';
 let hwImages = [], rdImages = [];
 let selectedSubject = '';
@@ -371,19 +375,101 @@ let ttsUtterance = null;
 let currentSegments = [];
 let currentSegIdx = -1;
 
+// ===== PROVIDER CONFIG =====
+const PROVIDERS = {
+  gemini: {
+    name: 'Gemini',
+    storageKey: 'homie_gemini_key',
+    placeholder: 'AIza...',
+    linkUrl: 'https://aistudio.google.com/app/apikey',
+    linkText: 'Gemini API Key',
+    desc: '免費申請，資料僅傳送至 Google，不經過本站',
+    models: [
+      { value: 'gemini-2.0-flash',                  label: 'Gemini 2.0 Flash（預設・最省）',   cost: '~$0.001 / 次' },
+      { value: 'gemini-3.5-flash',                  label: 'Gemini 3.5 Flash ✨ 最新・更準',   cost: '~$0.005 / 次' },
+      { value: 'gemini-2.5-flash-preview-05-20',    label: 'Gemini 2.5 Flash（平衡）',         cost: '~$0.003 / 次' },
+      { value: 'gemini-2.5-pro-preview-06-05',      label: 'Gemini 2.5 Pro（最準・較貴）',     cost: '~$0.02 / 次'  },
+    ]
+  },
+  claude: {
+    name: 'Claude',
+    storageKey: 'homie_claude_key',
+    placeholder: 'sk-ant-...',
+    linkUrl: 'https://console.anthropic.com/',
+    linkText: 'Claude API Key',
+    desc: 'Anthropic Console 申請，資料僅傳送至 Anthropic',
+    models: [
+      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6（推薦・均衡）', cost: '~$0.006 / 次' },
+      { value: 'claude-opus-4-8',   label: 'Claude Opus 4.8（最強・較貴）',   cost: '~$0.03 / 次'  },
+    ]
+  },
+  openai: {
+    name: 'OpenAI',
+    storageKey: 'homie_openai_key',
+    placeholder: 'sk-...',
+    linkUrl: 'https://platform.openai.com/api-keys',
+    linkText: 'OpenAI API Key',
+    desc: 'OpenAI Platform 申請，資料僅傳送至 OpenAI',
+    models: [
+      { value: 'gpt-4.1',      label: 'GPT-4.1（推薦・均衡）',    cost: '~$0.005 / 次' },
+      { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini（快速・省）', cost: '~$0.001 / 次' },
+      { value: 'gpt-4o',       label: 'GPT-4o（穩定視覺）',       cost: '~$0.003 / 次' },
+    ]
+  }
+};
+
+let currentProvider = localStorage.getItem('homie_provider') || 'gemini';
+
+function getCurrentKey() {
+  return localStorage.getItem(PROVIDERS[currentProvider].storageKey) || '';
+}
+
 // ===== INIT =====
 window.onload = () => {
-  if (apiKey) {
-    document.getElementById('apiKeyInput').value = apiKey;
-    showApiSaved();
-  }
+  switchProvider(currentProvider, true);
   if (window.speechSynthesis) {
     window.speechSynthesis.onvoiceschanged = () => {};
   }
-  // Load history counts
   loadHistoryUI('hw');
   loadHistoryUI('rd');
 };
+
+// ===== PROVIDER SWITCH =====
+function switchProvider(p, silent) {
+  currentProvider = p;
+  localStorage.setItem('homie_provider', p);
+
+  // Update tabs
+  document.querySelectorAll('.provider-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('ptab-' + p).classList.add('active');
+
+  // Update banner text
+  const cfg = PROVIDERS[p];
+  const keyLink = document.getElementById('apiKeyLink');
+  keyLink.href = cfg.linkUrl;
+  keyLink.textContent = cfg.linkText;
+  document.getElementById('apiDesc').childNodes[1].textContent = '';  // clear text after link
+  document.getElementById('apiDesc').innerHTML = `請輸入您的 <a id="apiKeyLink" href="${cfg.linkUrl}" target="_blank">${cfg.linkText}</a>（${cfg.desc}）`;
+
+  // Update input
+  const keyInput = document.getElementById('apiKeyInput');
+  keyInput.placeholder = cfg.placeholder;
+  const saved = getCurrentKey();
+  keyInput.value = saved ? saved : '';
+  const savedEl = document.getElementById('apiSaved');
+  if (saved) savedEl.classList.add('show'); else savedEl.classList.remove('show');
+
+  // Rebuild model list
+  const sel = document.getElementById('modelSelect');
+  sel.innerHTML = '';
+  cfg.models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.value;
+    opt.textContent = m.label;
+    sel.appendChild(opt);
+  });
+  updateCostBadge();
+}
 
 // ===== LANG =====
 function toggleLang() {
@@ -395,13 +481,12 @@ function toggleLang() {
 
 // ===== API KEY =====
 function saveApiKey() {
-  apiKey = document.getElementById('apiKeyInput').value.trim();
-  localStorage.setItem('gemini_api_key', apiKey);
+  const key = document.getElementById('apiKeyInput').value.trim();
+  localStorage.setItem(PROVIDERS[currentProvider].storageKey, key);
   showApiSaved();
 }
 function showApiSaved() {
-  const el = document.getElementById('apiSaved');
-  el.classList.add('show');
+  document.getElementById('apiSaved').classList.add('show');
 }
 
 // ===== TABS =====
@@ -494,50 +579,84 @@ function toggleChip(el, group) {
 }
 
 // ===== MODEL & COST =====
-const MODEL_COSTS = {
-  'gemini-2.0-flash':                   { label: '~$0.001 / 次', note: '快速・免費額度最多' },
-  'gemini-3.5-flash':                   { label: '~$0.005 / 次', note: '最新・更強・2026 I/O發布' },
-  'gemini-2.5-flash-preview-05-20':     { label: '~$0.003 / 次', note: '平衡速度與準確度' },
-  'gemini-2.5-pro-preview-06-05':       { label: '~$0.02 / 次',  note: '最準確・適合複雜題目' },
-};
-
 function getSelectedModel() {
   return document.getElementById('modelSelect')?.value || 'gemini-2.0-flash';
 }
 
 function updateCostBadge() {
   const model = getSelectedModel();
-  const info = MODEL_COSTS[model];
   const badge = document.getElementById('costBadge');
-  if (badge && info) badge.textContent = info.label;
+  if (!badge) return;
+  const cfg = PROVIDERS[currentProvider];
+  const m = cfg.models.find(x => x.value === model);
+  if (m) badge.textContent = m.cost;
 }
 
-// ===== GEMINI API =====
-async function callGemini(prompt, images) {
-  if (!apiKey) {
-    alert(lang === 'zh' ? '請先輸入並儲存 Gemini API Key！' : 'Please enter your Gemini API Key first!');
+// ===== UNIFIED AI CALL =====
+async function callAI(prompt, images) {
+  const key = getCurrentKey();
+  if (!key) {
+    const names = { gemini: 'Gemini', claude: 'Claude', openai: 'OpenAI' };
+    alert(`請先輸入並儲存 ${names[currentProvider]} API Key！`);
     return null;
   }
+  if (currentProvider === 'gemini') return callGemini(prompt, images, key);
+  if (currentProvider === 'claude') return callClaude(prompt, images, key);
+  if (currentProvider === 'openai') return callOpenAI(prompt, images, key);
+}
+
+async function callGemini(prompt, images, key) {
   const parts = [{ text: prompt }];
   for (const img of images) {
-    const base64 = img.dataUrl.split(',')[1];
-    const mimeType = img.file.type || 'image/jpeg';
-    parts.push({ inline_data: { mime_type: mimeType, data: base64 } });
+    parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: img.dataUrl.split(',')[1] } });
   }
-  const body = { contents: [{ parts }] };
   const model = getSelectedModel();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ contents: [{ parts }] })
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message || '請求失敗');
-  }
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Gemini 請求失敗'); }
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+async function callClaude(prompt, images, key) {
+  const content = [];
+  for (const img of images) {
+    content.push({ type: 'image', source: { type: 'base64', media_type: img.file.type || 'image/jpeg', data: img.dataUrl.split(',')[1] } });
+  }
+  content.push({ type: 'text', text: prompt });
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({ model: getSelectedModel(), max_tokens: 4096, messages: [{ role: 'user', content }] })
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Claude 請求失敗'); }
+  const data = await res.json();
+  return data.content?.[0]?.text || '';
+}
+
+async function callOpenAI(prompt, images, key) {
+  const content = [];
+  for (const img of images) {
+    content.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+  }
+  content.push({ type: 'text', text: prompt });
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: getSelectedModel(), messages: [{ role: 'user', content }], max_tokens: 4096 })
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'OpenAI 請求失敗'); }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
 }
 
 // ===== HOMEWORK =====
@@ -567,7 +686,7 @@ ${subjectHint}
 
   try {
     setProgress('hw', 30);
-    const text = await callGemini(prompt, hwImages);
+    const text = await callAI(prompt, hwImages);
     setProgress('hw', 100);
     if (!text) throw new Error('回應為空');
     renderHomeworkResult(text);
@@ -623,7 +742,7 @@ ${langInstr}。
 
   try {
     setProgress('rd', 30);
-    const text = await callGemini(prompt, rdImages);
+    const text = await callAI(prompt, rdImages);
     setProgress('rd', 100);
     if (!text) throw new Error('回應為空');
     renderReadingResult(text, readLang);
