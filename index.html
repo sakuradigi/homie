@@ -418,10 +418,8 @@ const PROVIDERS = {
     linkText: 'Gemini API Key',
     desc: '免費申請，資料僅傳送至 Google，不經過本站',
     models: [
-      { value: 'gemini-2.0-flash',                  label: 'Gemini 2.0 Flash（預設・最省）',   cost: '~$0.001 / 次' },
-      { value: 'gemini-3.5-flash',                  label: 'Gemini 3.5 Flash ✨ 最新・更準',   cost: '~$0.005 / 次' },
-      { value: 'gemini-2.5-flash-preview-05-20',    label: 'Gemini 2.5 Flash（平衡）',         cost: '~$0.003 / 次' },
-      { value: 'gemini-2.5-pro-preview-06-05',      label: 'Gemini 2.5 Pro（最準・較貴）',     cost: '~$0.02 / 次'  },
+      { value: 'gemini-3.5-flash',  label: 'Gemini 3.5 Flash（預設・推薦）', cost: '~$0.005 / 次' },
+      { value: 'gemini-3.5-pro',   label: 'Gemini 3.5 Pro（最準・較貴）',   cost: '~$0.02 / 次'  },
     ]
   },
   claude: {
@@ -648,7 +646,7 @@ function toggleChip(el, group) {
 
 // ===== MODEL & COST =====
 function getSelectedModel() {
-  return document.getElementById('modelSelect')?.value || 'gemini-2.0-flash';
+  return document.getElementById('modelSelect')?.value || 'gemini-3.5-flash';
 }
 
 function updateCostBadge() {
