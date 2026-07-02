@@ -90,7 +90,8 @@ KidAI 就是為這個場景專門打造的。
 ## 技術架構
 
 - 純單頁 HTML，零後端、零資料庫
-- Gemini / Claude / OpenAI Vision API — 圖片辨識 + 解題
+- PWA — 可加入主畫面、外殼離線可開（manifest + service worker）
+- Gemini / Claude / OpenAI Vision API — 圖片辨識 + 解題（SSE 串流即時顯示）
 - 瀏覽器內 canvas 圖片壓縮（上傳前長邊縮至 1600px）
 - Web Speech API — 瀏覽器原生 TTS
 - localStorage — 歷史紀錄暫存（最近 10 筆，文字 only）

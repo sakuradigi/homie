@@ -459,6 +459,9 @@ function getCurrentKey() {
 }
 
 // ===== INIT =====
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
 window.onload = () => {
   switchProvider(currentProvider, true);
   if (window.speechSynthesis) {
@@ -675,17 +678,17 @@ function updateCostBadge() {
   if (m) badge.textContent = m.cost;
 }
 
-// ===== UNIFIED AI CALL =====
-async function callAI(prompt, images) {
+// ===== UNIFIED AI CALL（SSE 串流）=====
+// onChunk(累積全文)：每收到一段就回呼，用於即時渲染
+async function callAI(prompt, images, onChunk) {
   const key = getCurrentKey();
   if (!key) {
-    const names = { gemini: 'Gemini', claude: 'Claude', openai: 'OpenAI' };
-    alert(`請先輸入並儲存 ${names[currentProvider]} API Key！`);
+    alert(`請先輸入並儲存 ${PROVIDERS[currentProvider].name} API Key！`);
     return null;
   }
-  if (currentProvider === 'gemini') return callGemini(prompt, images, key);
-  if (currentProvider === 'claude') return callClaude(prompt, images, key);
-  if (currentProvider === 'openai') return callOpenAI(prompt, images, key);
+  if (currentProvider === 'gemini') return callGemini(prompt, images, key, onChunk);
+  if (currentProvider === 'claude') return callClaude(prompt, images, key, onChunk);
+  if (currentProvider === 'openai') return callOpenAI(prompt, images, key, onChunk);
 }
 
 async function apiError(res, providerName) {
@@ -694,24 +697,49 @@ async function apiError(res, providerName) {
   return new Error(e.error?.message || `${providerName} 請求失敗（HTTP ${res.status}）`);
 }
 
-async function callGemini(prompt, images, key) {
+// 逐行解析 SSE stream，把每個 data: JSON 交給 onData
+async function readSSE(res, onData) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith('data:')) continue;
+      const payload = t.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try { onData(JSON.parse(payload)); } catch (e) {}
+    }
+  }
+}
+
+async function callGemini(prompt, images, key, onChunk) {
   const parts = [{ text: prompt }];
   for (const img of images) {
     parts.push({ inline_data: { mime_type: img.mime, data: img.dataUrl.split(',')[1] } });
   }
   const model = getSelectedModel();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 8192 } })
   });
   if (!res.ok) throw await apiError(res, 'Gemini');
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  let full = '';
+  await readSSE(res, d => {
+    const t = d.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (t) { full += t; if (onChunk) onChunk(full); }
+  });
+  return full;
 }
 
-async function callClaude(prompt, images, key) {
+async function callClaude(prompt, images, key, onChunk) {
   const content = [];
   for (const img of images) {
     content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.dataUrl.split(',')[1] } });
@@ -725,14 +753,20 @@ async function callClaude(prompt, images, key) {
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json'
     },
-    body: JSON.stringify({ model: getSelectedModel(), max_tokens: 8192, messages: [{ role: 'user', content }] })
+    body: JSON.stringify({ model: getSelectedModel(), max_tokens: 8192, stream: true, messages: [{ role: 'user', content }] })
   });
   if (!res.ok) throw await apiError(res, 'Claude');
-  const data = await res.json();
-  return data.content?.[0]?.text || '';
+  let full = '';
+  await readSSE(res, d => {
+    if (d.type === 'content_block_delta' && d.delta?.text) {
+      full += d.delta.text;
+      if (onChunk) onChunk(full);
+    }
+  });
+  return full;
 }
 
-async function callOpenAI(prompt, images, key) {
+async function callOpenAI(prompt, images, key, onChunk) {
   const content = [];
   for (const img of images) {
     content.push({ type: 'image_url', image_url: { url: img.dataUrl } });
@@ -741,11 +775,15 @@ async function callOpenAI(prompt, images, key) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: getSelectedModel(), messages: [{ role: 'user', content }], max_tokens: 8192 })
+    body: JSON.stringify({ model: getSelectedModel(), messages: [{ role: 'user', content }], max_tokens: 8192, stream: true })
   });
   if (!res.ok) throw await apiError(res, 'OpenAI');
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  let full = '';
+  await readSSE(res, d => {
+    const t = d.choices?.[0]?.delta?.content;
+    if (t) { full += t; if (onChunk) onChunk(full); }
+  });
+  return full;
 }
 
 // ===== HOMEWORK =====
@@ -775,9 +813,16 @@ ${subjectHint}
 
   try {
     setProgress('hw', 30);
-    const text = await callAI(prompt, hwImages);
+    // 串流：即時渲染部分結果
+    resultsEl.innerHTML = `<div class="result-card"><div class="result-page">解題結果</div><div class="md-body" id="hwLive"></div></div>`;
+    const live = document.getElementById('hwLive');
+    const text = await callAI(prompt, hwImages, partial => {
+      live.innerHTML = DOMPurify.sanitize(marked.parse(partial));
+    });
     setProgress('hw', 100);
+    if (text === null) { resultsEl.innerHTML = ''; return; } // 未設定 API Key，已 alert
     if (!text) throw new Error('回應為空');
+    resultsEl.innerHTML = '';
     renderHomeworkResult(text);
     saveHistory('hw', text);
     loadHistoryUI('hw');
@@ -831,9 +876,16 @@ ${langInstr}。
 
   try {
     setProgress('rd', 30);
-    const text = await callAI(prompt, rdImages);
+    // 串流：先以純文字即時預覽，完成後再轉為可點段朗讀版
+    resultsEl.innerHTML = `<div class="result-card read-card"><div class="result-page">辨識中…</div><div class="result-content" id="rdLive"></div></div>`;
+    const live = document.getElementById('rdLive');
+    const text = await callAI(prompt, rdImages, partial => {
+      live.textContent = partial;
+    });
     setProgress('rd', 100);
+    if (text === null) { resultsEl.innerHTML = ''; return; } // 未設定 API Key，已 alert
     if (!text) throw new Error('回應為空');
+    resultsEl.innerHTML = '';
     renderReadingResult(text, readLang);
     saveHistory('rd', text, readLang);
     loadHistoryUI('rd');
