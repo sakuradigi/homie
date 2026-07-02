@@ -1,0 +1,14 @@
+{
+  "name": "Homie 作業通",
+  "short_name": "Homie",
+  "description": "用 AI 幫家長檢查作業、朗讀繪本",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#F7F9FC",
+  "theme_color": "#4F8EF7",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

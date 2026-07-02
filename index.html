@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Homie 作業通</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4F8EF7">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
 <style>
   :root {
     --primary: #4F8EF7;
@@ -26,8 +30,6 @@
   header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 80px; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 8px rgba(0,0,0,0.05); }
   .logo { display: flex; align-items: center; }
   .logo img { height: 64px; width: auto; display: block; }
-  .lang-toggle { font-size: 13px; color: var(--muted); cursor: pointer; border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; transition: all 0.2s; }
-  .lang-toggle:hover { border-color: var(--primary); color: var(--primary); }
 
   /* API Key Banner */
   .api-banner { background: #EEF4FF; border: 1px solid #C7D9FF; margin: 20px 24px 0; border-radius: var(--radius); padding: 14px 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -238,7 +240,6 @@
 
 <header>
   <div class="logo"><img src="logo.png" alt="Homie 作業通"></div>
-  <button class="lang-toggle" onclick="toggleLang()">EN / 中</button>
 </header>
 
 <!-- API Key Banner -->
@@ -265,10 +266,10 @@
 
 <div class="tabs" style="max-width:700px;margin-left:auto;margin-right:auto;">
   <button class="tab active" onclick="switchTab('homework')" id="tab-homework">
-    <span class="tab-emoji">📝</span><span data-zh="解題助手" data-en="Homework">解題助手</span>
+    <span class="tab-emoji">📝</span><span>解題助手</span>
   </button>
   <button class="tab" onclick="switchTab('reading')" id="tab-reading">
-    <span class="tab-emoji">📖</span><span data-zh="繪本朗讀" data-en="Read Aloud">繪本朗讀</span>
+    <span class="tab-emoji">📖</span><span>繪本朗讀</span>
   </button>
 </div>
 
@@ -279,16 +280,16 @@
 
   <div class="upload-zone" id="hwDropzone" ondragover="onDrag(event,'hwDropzone')" ondragleave="offDrag('hwDropzone')" ondrop="onDrop(event,'hw')">
     <div class="upload-icon">📸</div>
-    <div class="upload-title" data-zh="上傳作業照片" data-en="Upload Homework Photos">上傳作業照片</div>
+    <div class="upload-title">上傳作業照片</div>
     <div class="capture-btns">
       <button class="capture-btn camera" onclick="document.getElementById('hwCameraInput').click()">
-        📷 <span data-zh="拍照" data-en="Camera">拍照</span>
+        📷 <span>拍照</span>
       </button>
       <button class="capture-btn gallery" onclick="document.getElementById('hwGalleryInput').click()">
-        🖼️ <span data-zh="從相簿選" data-en="Gallery">從相簿選</span>
+        🖼️ <span>從相簿選</span>
       </button>
     </div>
-    <div class="capture-hint" data-zh="拍照可連續按多次累加頁面 · 或拖曳圖片至此" data-en="Tap camera multiple times to add pages · or drag & drop">拍照可連續按多次累加頁面 · 或拖曳圖片至此</div>
+    <div class="capture-hint">拍照可連續按多次累加頁面 · 或拖曳圖片至此</div>
   </div>
 
   <div id="hwShootBar" class="shoot-more-bar" style="display:none">
@@ -301,13 +302,13 @@
   <div class="preview-grid" id="hwPreview"></div>
 
   <div class="model-row">
-    <label data-zh="模型" data-en="Model">模型</label>
+    <label>模型</label>
     <select class="model-select" id="modelSelect" onchange="updateCostBadge()"></select>
     <span class="cost-badge" id="costBadge">~$0.001 / 次</span>
   </div>
 
   <div class="subject-row">
-    <label data-zh="科目（選填，幫助 AI 更準確回答）" data-en="Subject (optional)">科目（選填，幫助 AI 更準確回答）</label>
+    <label>科目（選填，幫助 AI 更準確回答）</label>
     <div class="subject-chips" id="subjectChips">
       <div class="subject-chip selected" onclick="toggleSubject(this)" data-subject="">自動判斷</div>
       <div class="subject-chip" onclick="toggleSubject(this)" data-subject="數學">數學</div>
@@ -321,7 +322,7 @@
 
   <div class="sticky-action">
     <button class="action-btn primary" id="hwBtn" onclick="runHomework()">
-      <span>🔍</span> <span data-zh="開始解題" data-en="Analyze Homework">開始解題</span>
+      <span>🔍</span> <span>開始解題</span>
     </button>
   </div>
 
@@ -339,16 +340,16 @@
 
   <div class="upload-zone" id="rdDropzone" ondragover="onDrag(event,'rdDropzone')" ondragleave="offDrag('rdDropzone')" ondrop="onDrop(event,'rd')">
     <div class="upload-icon">📚</div>
-    <div class="upload-title" data-zh="上傳繪本照片" data-en="Upload Picture Book Pages">上傳繪本照片</div>
+    <div class="upload-title">上傳繪本照片</div>
     <div class="capture-btns">
       <button class="capture-btn camera-accent" onclick="document.getElementById('rdCameraInput').click()">
-        📷 <span data-zh="拍照" data-en="Camera">拍照</span>
+        📷 <span>拍照</span>
       </button>
       <button class="capture-btn gallery" onclick="document.getElementById('rdGalleryInput').click()">
-        🖼️ <span data-zh="從相簿選" data-en="Gallery">從相簿選</span>
+        🖼️ <span>從相簿選</span>
       </button>
     </div>
-    <div class="capture-hint" data-zh="拍照可連續按多次累加頁面 · 會自動去除頁碼等雜訊" data-en="Tap camera multiple times to add pages · page numbers auto-removed">拍照可連續按多次累加頁面 · 會自動去除頁碼等雜訊</div>
+    <div class="capture-hint">拍照可連續按多次累加頁面 · 會自動去除頁碼等雜訊</div>
   </div>
 
   <div id="rdShootBar" class="shoot-more-bar" style="display:none">
@@ -361,15 +362,15 @@
   <div class="preview-grid" id="rdPreview"></div>
 
   <div class="options-row">
-    <div class="option-chip selected" onclick="toggleChip(this,'rdLang')" data-group="rdLang" data-val="zh" data-zh="中文朗讀" data-en="Chinese">中文朗讀</div>
-    <div class="option-chip" onclick="toggleChip(this,'rdLang')" data-group="rdLang" data-val="en" data-zh="英文朗讀" data-en="English">英文朗讀</div>
+    <div class="option-chip selected" onclick="toggleChip(this,'rdLang')" data-group="rdLang" data-val="zh">中文朗讀</div>
+    <div class="option-chip" onclick="toggleChip(this,'rdLang')" data-group="rdLang" data-val="en">英文朗讀</div>
   </div>
 
   <div id="rdProgress" class="progress-bar" style="display:none"><div class="progress-fill" id="rdProgressFill" style="width:0%"></div></div>
 
   <div class="sticky-action">
     <button class="action-btn accent" id="rdBtn" onclick="runReading()">
-      <span>🔊</span> <span data-zh="擷取文字並朗讀" data-en="Extract & Read Aloud">擷取文字並朗讀</span>
+      <span>🔊</span> <span>擷取文字並朗讀</span>
     </button>
   </div>
 
@@ -401,12 +402,12 @@
 
 <script>
 // ===== STATE =====
-let lang = 'zh';
 let hwImages = [], rdImages = [];
 let selectedSubject = '';
 let ttsUtterance = null;
 let currentSegments = [];
 let currentSegIdx = -1;
+let currentReadLang = 'zh';
 
 // ===== PROVIDER CONFIG =====
 const PROVIDERS = {
@@ -461,7 +462,7 @@ function getCurrentKey() {
 window.onload = () => {
   switchProvider(currentProvider, true);
   if (window.speechSynthesis) {
-    window.speechSynthesis.onvoiceschanged = () => {};
+    window.speechSynthesis.onvoiceschanged = () => populateVoices(currentReadLang);
   }
   loadHistoryUI('hw');
   loadHistoryUI('rd');
@@ -478,11 +479,7 @@ function switchProvider(p, silent) {
 
   // Update banner text
   const cfg = PROVIDERS[p];
-  const keyLink = document.getElementById('apiKeyLink');
-  keyLink.href = cfg.linkUrl;
-  keyLink.textContent = cfg.linkText;
-  document.getElementById('apiDesc').childNodes[1].textContent = '';  // clear text after link
-  document.getElementById('apiDesc').innerHTML = `請輸入您的 <a id="apiKeyLink" href="${cfg.linkUrl}" target="_blank">${cfg.linkText}</a>（${cfg.desc}）`;
+  document.getElementById('apiDesc').innerHTML = `請輸入您的 <a href="${cfg.linkUrl}" target="_blank">${cfg.linkText}</a>（${cfg.desc}）`;
 
   // Update input
   const keyInput = document.getElementById('apiKeyInput');
@@ -504,17 +501,10 @@ function switchProvider(p, silent) {
   updateCostBadge();
 }
 
-// ===== LANG =====
-function toggleLang() {
-  lang = lang === 'zh' ? 'en' : 'zh';
-  document.querySelectorAll('[data-zh]').forEach(el => {
-    el.textContent = el.getAttribute('data-' + lang);
-  });
-}
-
 // ===== API KEY =====
 function saveApiKey() {
   const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) { alert('請先輸入 API Key'); return; }
   localStorage.setItem(PROVIDERS[currentProvider].storageKey, key);
   showApiSaved();
 }
@@ -524,6 +514,7 @@ function showApiSaved() {
 
 // ===== TABS =====
 function switchTab(name) {
+  stopTTS();
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
@@ -543,21 +534,49 @@ function onDrop(e, prefix) {
 function handleFileInput(input, prefix, fromCamera) {
   if (!input.files.length) return;
   if (fromCamera) {
-    // Load single photo then show bottom sheet
-    const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    // Compress single photo then show bottom sheet
+    compressImage(input.files[0]).then(img => {
       const arr = prefix === 'hw' ? hwImages : rdImages;
-      arr.push({ file, dataUrl: e.target.result });
+      arr.push(img);
       renderPreview(prefix);
       updateShootBar(prefix);
-      showCaptureSheet(prefix, e.target.result);
-    };
-    reader.readAsDataURL(file);
+      showCaptureSheet(prefix, img.dataUrl);
+    });
   } else {
     addImages(input.files, prefix);
   }
   setTimeout(() => { input.value = ''; }, 200);
+}
+
+// 上傳前壓縮：長邊縮至 1600px + JPEG 重編碼。
+// 大幅降低上傳時間與 vision token 費用（手機原圖可達 4-8MB）。
+async function compressImage(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = dataUrl;
+    });
+    const MAX_EDGE = 1600;
+    const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+    if (scale === 1 && file.size < 400 * 1024) {
+      return { mime: file.type || 'image/jpeg', dataUrl };
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { mime: 'image/jpeg', dataUrl: canvas.toDataURL('image/jpeg', 0.85) };
+  } catch (e) {
+    return { mime: file.type || 'image/jpeg', dataUrl }; // 壓縮失敗時退回原圖
+  }
 }
 
 // ===== CAPTURE BOTTOM SHEET =====
@@ -583,13 +602,11 @@ function hideCaptureSheet() {
 function addImages(files, prefix) {
   const arr = prefix === 'hw' ? hwImages : rdImages;
   Array.from(files).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      arr.push({ file, dataUrl: e.target.result });
+    compressImage(file).then(img => {
+      arr.push(img);
       renderPreview(prefix);
       updateShootBar(prefix);
-    };
-    reader.readAsDataURL(file);
+    });
   });
 }
 
@@ -671,19 +688,25 @@ async function callAI(prompt, images) {
   if (currentProvider === 'openai') return callOpenAI(prompt, images, key);
 }
 
+async function apiError(res, providerName) {
+  if (res.status === 429) return new Error('請求太頻繁，請等一分鐘再試');
+  const e = await res.json().catch(() => ({}));
+  return new Error(e.error?.message || `${providerName} 請求失敗（HTTP ${res.status}）`);
+}
+
 async function callGemini(prompt, images, key) {
   const parts = [{ text: prompt }];
   for (const img of images) {
-    parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: img.dataUrl.split(',')[1] } });
+    parts.push({ inline_data: { mime_type: img.mime, data: img.dataUrl.split(',')[1] } });
   }
   const model = getSelectedModel();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts }] })
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 8192 } })
   });
-  if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Gemini 請求失敗'); }
+  if (!res.ok) throw await apiError(res, 'Gemini');
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
@@ -691,7 +714,7 @@ async function callGemini(prompt, images, key) {
 async function callClaude(prompt, images, key) {
   const content = [];
   for (const img of images) {
-    content.push({ type: 'image', source: { type: 'base64', media_type: img.file.type || 'image/jpeg', data: img.dataUrl.split(',')[1] } });
+    content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.dataUrl.split(',')[1] } });
   }
   content.push({ type: 'text', text: prompt });
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -702,9 +725,9 @@ async function callClaude(prompt, images, key) {
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json'
     },
-    body: JSON.stringify({ model: getSelectedModel(), max_tokens: 4096, messages: [{ role: 'user', content }] })
+    body: JSON.stringify({ model: getSelectedModel(), max_tokens: 8192, messages: [{ role: 'user', content }] })
   });
-  if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Claude 請求失敗'); }
+  if (!res.ok) throw await apiError(res, 'Claude');
   const data = await res.json();
   return data.content?.[0]?.text || '';
 }
@@ -718,9 +741,9 @@ async function callOpenAI(prompt, images, key) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: getSelectedModel(), messages: [{ role: 'user', content }], max_tokens: 4096 })
+    body: JSON.stringify({ model: getSelectedModel(), messages: [{ role: 'user', content }], max_tokens: 8192 })
   });
-  if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'OpenAI 請求失敗'); }
+  if (!res.ok) throw await apiError(res, 'OpenAI');
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';
 }
@@ -728,13 +751,13 @@ async function callOpenAI(prompt, images, key) {
 // ===== HOMEWORK =====
 async function runHomework() {
   if (hwImages.length === 0) {
-    alert(lang === 'zh' ? '請先上傳作業照片！' : 'Please upload homework photos first!');
+    alert('請先上傳作業照片！');
     return;
   }
   const btn = document.getElementById('hwBtn');
   const resultsEl = document.getElementById('hwResults');
   btn.disabled = true;
-  btn.innerHTML = `<div class="spinner"></div> <span>${lang === 'zh' ? '分析中...' : 'Analyzing...'}</span>`;
+  btn.innerHTML = `<div class="spinner"></div> <span>分析中...</span>`;
   showProgress('hw');
   resultsEl.innerHTML = '';
 
@@ -756,11 +779,13 @@ ${subjectHint}
     setProgress('hw', 100);
     if (!text) throw new Error('回應為空');
     renderHomeworkResult(text);
+    saveHistory('hw', text);
+    loadHistoryUI('hw');
   } catch (e) {
     resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<span>🔍</span> <span>${lang === 'zh' ? '重新解題' : 'Re-analyze'}</span>`;
+    btn.innerHTML = `<span>🔍</span> <span>重新解題</span>`;
     hideProgress('hw');
   }
 }
@@ -769,29 +794,27 @@ function renderHomeworkResult(text) {
   const resultsEl = document.getElementById('hwResults');
   const card = document.createElement('div');
   card.className = 'result-card';
-  card.innerHTML = `<div class="result-page">${lang === 'zh' ? '解題結果' : 'Results'}</div><div class="md-body">${marked.parse(text)}</div>`;
+  card.innerHTML = `<div class="result-page">解題結果</div><div class="md-body">${DOMPurify.sanitize(marked.parse(text))}</div>`;
   resultsEl.appendChild(card);
   // New question button
   const btn = document.createElement('button');
   btn.className = 'new-q-btn';
-  btn.innerHTML = '🔄 ' + (lang === 'zh' ? '新題目（清除照片重新開始）' : 'New Question (clear & restart)');
+  btn.innerHTML = '🔄 新題目（清除照片重新開始）';
   btn.onclick = () => resetPanel('hw');
   resultsEl.appendChild(btn);
-  saveHistory('hw', text);
-  loadHistoryUI('hw');
 }
 
 // ===== READING =====
 async function runReading() {
   if (rdImages.length === 0) {
-    alert(lang === 'zh' ? '請先上傳繪本照片！' : 'Please upload picture book photos first!');
+    alert('請先上傳繪本照片！');
     return;
   }
   const readLang = document.querySelector('[data-group="rdLang"].selected')?.dataset.val || 'zh';
   const btn = document.getElementById('rdBtn');
   const resultsEl = document.getElementById('rdResults');
   btn.disabled = true;
-  btn.innerHTML = `<div class="spinner"></div> <span>${lang === 'zh' ? '辨識中...' : 'Processing...'}</span>`;
+  btn.innerHTML = `<div class="spinner"></div> <span>辨識中...</span>`;
   showProgress('rd');
   resultsEl.innerHTML = '';
   stopTTS();
@@ -812,27 +835,29 @@ ${langInstr}。
     setProgress('rd', 100);
     if (!text) throw new Error('回應為空');
     renderReadingResult(text, readLang);
+    saveHistory('rd', text, readLang);
+    loadHistoryUI('rd');
   } catch (e) {
     resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<span>🔊</span> <span>${lang === 'zh' ? '重新擷取' : 'Re-extract'}</span>`;
+    btn.innerHTML = `<span>🔊</span> <span>重新擷取</span>`;
     hideProgress('rd');
   }
 }
 
 function renderReadingResult(text, readLang) {
   const resultsEl = document.getElementById('rdResults');
-  const pages = text.split(/===第\d+頁===/).filter(p => p.trim());
+  currentReadLang = readLang;
+  // 容忍空格與英文變體：=== 第 1 頁 === / === Page 1 ===
+  const pages = text.split(/===\s*(?:第\s*\d+\s*頁|Page\s*\d+)\s*===/i).filter(p => p.trim());
   if (pages.length === 0) {
-    resultsEl.innerHTML = `<div class="error-box">${lang === 'zh' ? '無法辨識文字，請確認圖片清晰度' : 'Could not extract text. Please check image quality.'}</div>`;
+    resultsEl.innerHTML = `<div class="error-box">無法辨識文字，請確認圖片清晰度</div>`;
     return;
   }
 
   // Flatten all paragraphs for TTS
   currentSegments = [];
-
-  saveHistory('rd', text);
 
   pages.forEach((pageText, pi) => {
     const card = document.createElement('div');
@@ -860,61 +885,50 @@ function renderReadingResult(text, readLang) {
     });
 
     card.appendChild(contentDiv);
-
-    // TTS controls per page
-    const ctrl = buildTTSControls(pi, readLang);
-    card.appendChild(ctrl);
-
     resultsEl.appendChild(card);
   });
 
-  // Global controls
+  // 單一全域朗讀控制列（語速／語音對全文生效）
   const globalCtrl = document.createElement('div');
-  globalCtrl.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
+  globalCtrl.style.cssText = 'display:flex;gap:8px;margin-top:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;';
   globalCtrl.innerHTML = `
-    <button class="tts-btn" onclick="startTTSFrom(0,'${readLang}')" style="flex:1;justify-content:center;">▶ ${lang === 'zh' ? '從頭朗讀全文' : 'Read All from Start'}</button>
-    <button class="tts-btn" onclick="stopTTS()" style="justify-content:center;">⏹ ${lang === 'zh' ? '停止' : 'Stop'}</button>
-  `;
-  resultsEl.prepend(globalCtrl);
-
-  // New question button
-  const newQBtn = document.createElement('button');
-  newQBtn.className = 'new-q-btn';
-  newQBtn.innerHTML = '🔄 ' + (lang === 'zh' ? '新繪本（清除照片重新開始）' : 'New Book (clear & restart)');
-  newQBtn.onclick = () => resetPanel('rd');
-  resultsEl.appendChild(newQBtn);
-
-  loadHistoryUI('rd');
-}
-
-function buildTTSControls(pageIdx, readLang) {
-  const div = document.createElement('div');
-  div.className = 'tts-controls';
-  div.innerHTML = `
-    <select class="speed-select" id="speed-${pageIdx}" onchange="updateSpeed()">
+    <button class="tts-btn" onclick="startTTSFrom(0,'${readLang}')" style="flex:1;justify-content:center;">▶ 從頭朗讀全文</button>
+    <button class="tts-btn" onclick="stopTTS()" style="justify-content:center;">⏹ 停止</button>
+    <select class="speed-select" id="ttsSpeed">
       <option value="0.7">慢 0.7x</option>
       <option value="0.85">0.85x</option>
       <option value="1" selected>正常 1x</option>
       <option value="1.2">1.2x</option>
       <option value="1.5">快 1.5x</option>
     </select>
-    <select class="voice-select" id="voice-${pageIdx}">
+    <select class="voice-select" id="ttsVoice">
       <option value="">預設語音</option>
     </select>
   `;
-  // Populate voices
-  setTimeout(() => {
-    const voices = speechSynthesis.getVoices();
-    const sel = div.querySelector(`#voice-${pageIdx}`);
-    const targetLang = readLang === 'zh' ? 'zh' : 'en';
-    voices.filter(v => v.lang.startsWith(targetLang)).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.name;
-      opt.textContent = v.name;
-      sel.appendChild(opt);
-    });
-  }, 300);
-  return div;
+  resultsEl.prepend(globalCtrl);
+  populateVoices(readLang);
+
+  // New question button
+  const newQBtn = document.createElement('button');
+  newQBtn.className = 'new-q-btn';
+  newQBtn.innerHTML = '🔄 新繪本（清除照片重新開始）';
+  newQBtn.onclick = () => resetPanel('rd');
+  resultsEl.appendChild(newQBtn);
+}
+
+function populateVoices(readLang) {
+  const sel = document.getElementById('ttsVoice');
+  if (!sel || !window.speechSynthesis) return;
+  const prev = sel.value;
+  sel.querySelectorAll('option:not(:first-child)').forEach(o => o.remove());
+  const target = readLang === 'zh' ? 'zh' : 'en';
+  speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith(target)).forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    opt.textContent = v.name;
+    sel.appendChild(opt);
+  });
+  sel.value = prev && [...sel.options].some(o => o.value === prev) ? prev : '';
 }
 
 // ===== TTS =====
@@ -933,12 +947,11 @@ function speakNext(readLang) {
   highlightSegment(currentSegIdx);
   const u = new SpeechSynthesisUtterance(text);
 
-  // Speed from first speed selector (simplified)
-  const speedEl = document.querySelector('.speed-select');
+  // Speed / voice from the global controls
+  const speedEl = document.getElementById('ttsSpeed');
   u.rate = speedEl ? parseFloat(speedEl.value) : 1;
 
-  // Voice
-  const voiceEl = document.querySelector('.voice-select');
+  const voiceEl = document.getElementById('ttsVoice');
   if (voiceEl && voiceEl.value) {
     const voices = speechSynthesis.getVoices();
     u.voice = voices.find(v => v.name === voiceEl.value) || null;
@@ -965,10 +978,6 @@ function highlightSegment(idx) {
   });
 }
 
-function updateSpeed() {
-  // If currently playing, it'll apply on next segment
-}
-
 // ===== PROGRESS =====
 function showProgress(prefix) { document.getElementById(prefix+'Progress').style.display = 'block'; setProgress(prefix, 10); }
 function hideProgress(prefix) { document.getElementById(prefix+'Progress').style.display = 'none'; }
@@ -986,11 +995,17 @@ function resetPanel(prefix) {
 const HISTORY_KEY = { hw: 'kidai_hw_history', rd: 'kidai_rd_history' };
 const MAX_HISTORY = 10;
 
-function saveHistory(prefix, text) {
+function saveHistory(prefix, text, readLang) {
   const key = HISTORY_KEY[prefix];
   let arr = [];
   try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
-  arr.unshift({ ts: Date.now(), subject: selectedSubject || '作業', preview: text.slice(0, 80), full: text });
+  arr.unshift({
+    ts: Date.now(),
+    subject: prefix === 'hw' ? (selectedSubject || '作業') : '繪本',
+    preview: text.slice(0, 80),
+    full: text,
+    readLang: readLang || null
+  });
   if (arr.length > MAX_HISTORY) arr = arr.slice(0, MAX_HISTORY);
   try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e) {}
 }
@@ -1008,24 +1023,30 @@ function loadHistoryUI(prefix) {
     listEl.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">尚無紀錄</div>';
     return;
   }
-  arr.forEach((item, i) => {
+  arr.forEach(item => {
     const d = new Date(item.ts);
     const timeStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
     const div = document.createElement('div');
     div.className = 'history-item';
-    div.innerHTML = `<div class="h-meta">${timeStr}　${item.subject}</div><div class="h-preview">${item.preview.replace(/[#*\n]/g,' ')}…</div>`;
-    div.onclick = () => restoreHistory(prefix, item.full);
+    const meta = document.createElement('div');
+    meta.className = 'h-meta';
+    meta.textContent = `${timeStr}　${item.subject}`;
+    const prev = document.createElement('div');
+    prev.className = 'h-preview';
+    prev.textContent = item.preview.replace(/[#*\n]/g, ' ') + '…';
+    div.append(meta, prev);
+    div.onclick = () => restoreHistory(prefix, item);
     listEl.appendChild(div);
   });
 }
 
-function restoreHistory(prefix, text) {
+function restoreHistory(prefix, item) {
   const resultsEl = document.getElementById(prefix + 'Results');
   resultsEl.innerHTML = '';
   if (prefix === 'hw') {
-    renderHomeworkResult(text);
+    renderHomeworkResult(item.full);
   } else {
-    renderReadingResult(text, 'zh');
+    renderReadingResult(item.full, item.readLang || 'zh');
   }
   resultsEl.scrollIntoView({ behavior: 'smooth' });
 }
@@ -1034,11 +1055,6 @@ function toggleHistory(prefix) {
   const listEl = document.getElementById(prefix + 'HistoryList');
   listEl.classList.toggle('open');
   loadHistoryUI(prefix);
-}
-
-// ===== UTILS =====
-function escapeHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
 }
 </script>
 </body>

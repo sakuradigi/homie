@@ -37,21 +37,23 @@ KidAI 就是為這個場景專門打造的。
 - 支援中文 / 英文繪本
 
 ### 其他
+- 支援三家 AI 供應商：Gemini / Claude / OpenAI，自備 API Key 即可切換
+- 照片上傳前自動壓縮（長邊 1600px），大幅降低費用與等待時間
 - 最近 10 筆歷史紀錄（localStorage，不上傳）
 - 解題完成後一鍵「新題目」清除重來
 - 模型自由選擇（見下方費用說明）
-- 繁體中文 / English 介面切換
 
 ---
 
 ## 使用方式
 
-**Step 1 — 申請免費 Gemini API Key**
+**Step 1 — 申請 API Key（三家擇一）**
 
-前往 [Google AI Studio](https://aistudio.google.com/app/apikey)，登入 Google 帳號後點「Create API Key」。
+- Gemini（推薦入門）：[Google AI Studio](https://aistudio.google.com/app/apikey)，免費方案每分鐘 60 次請求，不需信用卡
+- Claude：[Anthropic Console](https://console.anthropic.com/)
+- OpenAI：[OpenAI Platform](https://platform.openai.com/api-keys)
 
-> 免費方案每分鐘 60 次請求，個人使用完全夠用，不需要信用卡。
-> 你的 Gemini 訂閱（消費者版）和 API 是兩個不同系統，互不影響。
+> 你的消費者版訂閱（Gemini / Claude / ChatGPT）和 API 是兩個不同系統，互不影響。
 
 **Step 2 — 開啟網頁，填入 API Key**
 
@@ -63,20 +65,23 @@ KidAI 就是為這個場景專門打造的。
 
 ## 模型選擇與費用參考
 
-| 模型 | 建議用途 | 估計費用 / 次 |
-|------|---------|-------------|
-| Gemini 2.0 Flash（預設）| 日常作業，速度最快 | ~$0.001 |
-| Gemini 3.5 Flash ✨ | 複雜題目，最新模型（2026 I/O）| ~$0.005 |
-| Gemini 2.5 Flash | 平衡速度與準確度 | ~$0.003 |
-| Gemini 2.5 Pro | 最高準確度 | ~$0.02 |
+| 供應商 | 模型 | 建議用途 | 估計費用 / 次 |
+|--------|------|---------|-------------|
+| Gemini | 3.5 Flash（預設）| 日常作業，快速 | ~$0.005 |
+| Gemini | 3.5 Pro | 最高準確度 | ~$0.02 |
+| Claude | Haiku 4.5 | 快速、最省 | ~$0.001 |
+| Claude | Sonnet 4.6 | 均衡推薦 | ~$0.006 |
+| Claude | Opus 4.8 | 最強 | ~$0.03 |
+| OpenAI | GPT-5.4 Mini / Nano | 均衡 / 最省 | ~$0.002 / ~$0.0005 |
+| OpenAI | GPT-4.1 / 4.1 Mini | 穩定 | ~$0.005 / ~$0.001 |
 
-> 費用從你自己的 Google AI Studio 帳號扣，不經過本站。
+> 費用從你自己的供應商帳號扣，不經過本站。照片會先在瀏覽器內壓縮，實際費用通常低於上表。
 
 ---
 
 ## 隱私
 
-- 圖片直接從你的瀏覽器傳送至 Google Gemini API，**不經過本站任何伺服器**
+- 圖片直接從你的瀏覽器傳送至你選擇的 AI 供應商（Google / Anthropic / OpenAI），**不經過本站任何伺服器**
 - API Key 存在你瀏覽器的 localStorage，不上傳
 - 本站不收集任何使用資料
 
@@ -85,10 +90,11 @@ KidAI 就是為這個場景專門打造的。
 ## 技術架構
 
 - 純單頁 HTML，零後端、零資料庫
-- Google Gemini Vision API — 圖片辨識 + 解題
+- Gemini / Claude / OpenAI Vision API — 圖片辨識 + 解題
+- 瀏覽器內 canvas 圖片壓縮（上傳前長邊縮至 1600px）
 - Web Speech API — 瀏覽器原生 TTS
 - localStorage — 歷史紀錄暫存（最近 10 筆，文字 only）
-- marked.js — Markdown 渲染
+- marked.js + DOMPurify — Markdown 安全渲染
 
 ---
 
