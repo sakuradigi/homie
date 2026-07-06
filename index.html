@@ -30,6 +30,19 @@
   header { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 80px; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 8px rgba(0,0,0,0.05); }
   .logo { display: flex; align-items: center; }
   .logo img { height: 64px; width: auto; display: block; }
+  .about-link { font-size: 13px; color: var(--muted); border: 1px solid var(--border); border-radius: 20px; padding: 5px 14px; text-decoration: none; transition: all 0.2s; }
+  .about-link:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* Intro hero（首次造訪顯示，開始使用後收合） */
+  .intro-hero { background: linear-gradient(150deg, #EEF4FF 0%, #F7F9FC 55%, #FFF3EF 100%); border-bottom: 1px solid var(--border); text-align: center; padding: 36px 24px 32px; }
+  .intro-hero h1 { font-size: 25px; line-height: 1.4; margin-bottom: 10px; }
+  .intro-hero h1 em { font-style: normal; color: var(--primary); }
+  .intro-hero p { font-size: 14px; color: var(--muted); max-width: 480px; margin: 0 auto 18px; }
+  .intro-chips { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
+  .intro-chips span { font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; }
+  .intro-actions { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; }
+  .intro-start { background: var(--primary); color: white; border: none; border-radius: 12px; padding: 13px 28px; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(79,142,247,0.35); }
+  .intro-more { font-size: 14px; color: var(--primary); text-decoration: none; }
 
   /* API Key Banner */
   .api-banner { background: #EEF4FF; border: 1px solid #C7D9FF; margin: 20px 24px 0; border-radius: var(--radius); padding: 14px 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -240,7 +253,21 @@
 
 <header>
   <div class="logo"><img src="logo.png" alt="Homie 作業通"></div>
+  <a class="about-link" href="about.html">關於 Homie</a>
 </header>
+
+<!-- 首次造訪介紹區（用過即自動收合） -->
+<section class="intro-hero" id="introHero">
+  <h1>陪孩子寫作業，<em>不再靠猜</em></h1>
+  <p>拍張照，AI 逐題批閱附解說；繪本拍下來，自動唸給孩子聽。免費、不用註冊、照片不經任何伺服器。</p>
+  <div class="intro-chips">
+    <span>✓ 免費</span><span>✓ 不用註冊</span><span>✓ 開源</span>
+  </div>
+  <div class="intro-actions">
+    <button class="intro-start" onclick="dismissIntro()">開始使用 ↓</button>
+    <a class="intro-more" href="about.html">了解更多 →</a>
+  </div>
+</section>
 
 <!-- API Key Banner -->
 <div class="api-banner" id="apiBanner">
@@ -463,6 +490,11 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 window.onload = () => {
+  // 老用戶（已存 Key 或有紀錄或按過開始）自動收合介紹區
+  if (localStorage.getItem('homie_intro_seen') || getCurrentKey() ||
+      localStorage.getItem(HISTORY_KEY.hw) || localStorage.getItem(HISTORY_KEY.rd)) {
+    document.getElementById('introHero').style.display = 'none';
+  }
   switchProvider(currentProvider, true);
   if (window.speechSynthesis) {
     window.speechSynthesis.onvoiceschanged = () => populateVoices(currentReadLang);
@@ -502,6 +534,11 @@ function switchProvider(p, silent) {
     sel.appendChild(opt);
   });
   updateCostBadge();
+}
+
+function dismissIntro() {
+  localStorage.setItem('homie_intro_seen', '1');
+  document.getElementById('introHero').style.display = 'none';
 }
 
 // ===== API KEY =====

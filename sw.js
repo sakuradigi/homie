@@ -1,9 +1,10 @@
 // Homie 作業通 — Service Worker
 // 策略：網頁本體 network-first（避免舊版卡住）；靜態資源 cache-first；AI API 一律走網路不快取。
-const CACHE = 'homie-v0.5.0';
+const CACHE = 'homie-v0.6.0';
 const SHELL = [
   './',
   './index.html',
+  './about.html',
   './logo.png',
   './icon-192.png',
   './icon-512.png',
@@ -34,7 +35,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(
       fetch(e.request)
         .then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return r; })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
     );
   } else {
     // cache-first：靜態資源
