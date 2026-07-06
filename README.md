@@ -17,7 +17,7 @@
 
 現有 AI 工具（Gemini、ChatGPT）能做到這些，但 UX 不是為這個場景設計的：跳題、跳頁、朗讀無法中斷、無法從指定位置開始……
 
-KidAI 就是為這個場景專門打造的。
+Homie 就是為這個場景專門打造的。
 
 ---
 
@@ -109,4 +109,4 @@ KidAI 就是為這個場景專門打造的。
 
 Vincent Lu — 為自己孩子做的工具，開源分享給有同樣需求的家長。
 
-如有 bug 或功能建議，歡迎開 [Issue](https://github.com/sakuradigi/Kidai/issues)。
+如有 bug 或功能建議，歡迎開 [Issue](https://github.com/sakuradigi/homie/issues)。

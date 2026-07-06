@@ -11,6 +11,13 @@ fi
 
 MSG=${1:-"更新"}
 
+# 強制版本紀錄：CHANGELOG.md 沒跟著改就擋下
+if ! git status --porcelain | grep -q "CHANGELOG.md"; then
+  echo "⚠️ 這次變更沒有更新 CHANGELOG.md。"
+  read -p "仍要部署嗎？(y/N) " yn
+  [ "$yn" != "y" ] && echo "已取消。請先補上版本紀錄。" && exit 1
+fi
+
 git add .
 git commit -m "$MSG" || exit 1
 

@@ -1081,8 +1081,23 @@ function resetPanel(prefix) {
 }
 
 // ===== HISTORY =====
-const HISTORY_KEY = { hw: 'kidai_hw_history', rd: 'kidai_rd_history' };
+const HISTORY_KEY = { hw: 'homie_hw_history', rd: 'homie_rd_history' };
+const LEGACY_HISTORY_KEY = { hw: 'kidai_hw_history', rd: 'kidai_rd_history' };
 const MAX_HISTORY = 10;
+
+// 品牌更名遺留：把舊 kidai_ 前綴的紀錄搬到新的 homie_ 前綴，避免老用戶歷史紀錄消失
+(function migrateLegacyHistory() {
+  ['hw', 'rd'].forEach(prefix => {
+    const newKey = HISTORY_KEY[prefix];
+    const oldKey = LEGACY_HISTORY_KEY[prefix];
+    try {
+      if (localStorage.getItem(newKey) === null && localStorage.getItem(oldKey) !== null) {
+        localStorage.setItem(newKey, localStorage.getItem(oldKey));
+      }
+      localStorage.removeItem(oldKey);
+    } catch (e) {}
+  });
+})();
 
 function saveHistory(prefix, text, readLang) {
   const key = HISTORY_KEY[prefix];

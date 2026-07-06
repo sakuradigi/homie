@@ -1,6 +1,6 @@
 # Homie 作業通 — 程式碼審查與優化建議
 
-> 審查日期：2026-07-02 · 對象：index.html (v0.3.1)、README.md、deploy.sh
+> 審查日期：2026-07-06 · 對象：index.html (v0.3.1)、README.md、deploy.sh
 
 ## 總評
 
@@ -85,7 +85,7 @@ Gemini/Claude/OpenAI 皆支援 SSE 串流。逐字顯示可讓 10 秒的等待�
 ## E. 文件與工程衛生
 
 - **README 與程式碼脫節**：README 模型表還是 2.0/2.5 Flash 四款、預設 2.0 Flash；程式碼實際是 3.5 Flash/Pro 兩款，且已支援 Claude/OpenAI 三家，README 完全沒提。功能表也缺「多供應商」。
-- `HISTORY_KEY` 仍用 `kidai_*` 前綴（改名遺留）。保留可向下相容，但註記即可。
+- ~~`HISTORY_KEY` 仍用 `kidai_*` 前綴（改名遺留）。~~ 已於 v0.6.1 修正為 `homie_*` 前綴，並加入舊 key 自動遷移邏輯，老用戶歷史紀錄不受影響。
 - `deploy.sh`：無變更時 `git commit` 失敗但仍執行 push 並顯示成功；建議先 `git diff --quiet` 檢查。另補 `.gitignore`（.DS_Store）。
 
 ---
