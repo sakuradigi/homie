@@ -156,6 +156,7 @@
   .md-body strong { font-weight: 700; }
   .md-body code { background: #F3F4F6; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
   .md-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  .md-body mark { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
 
   /* Shoot-more bar */
   .shoot-more-bar { display: flex; align-items: center; gap: 10px; background: #EEF4FF; border: 1px solid #C7D9FF; border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; }
@@ -845,6 +846,7 @@ ${subjectHint}
 2. 針對每一題，給出正確答案，並簡短說明（一句話即可）。
 3. 若有計算題，請給出完整解題步驟。
 4. 若題目有錯誤或缺頁，請說明。
+5. 若孩子在圖片中寫的答案是錯的，請把正確答案（或需要訂正的內容）用 <mark>這個標籤</mark> 包起來，例如孩子把 5+3 算成 9，就寫成：正確答案是 <mark>8</mark>（不是 9）。孩子答對的題目維持一般文字，不要加這個標籤，只有需要訂正的地方才用。
 
 請以繁體中文回答，格式清楚。每題之間請空一行。`;
 
