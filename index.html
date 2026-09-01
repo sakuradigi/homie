@@ -447,8 +447,8 @@ const PROVIDERS = {
     linkText: 'Gemini API Key',
     desc: '免費申請，資料僅傳送至 Google，不經過本站',
     models: [
-      { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash（預設・推薦）', cost: '~$0.005 / 次' },
-      { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash（更精準）',     cost: '~$0.006 / 次' },
+      { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash（預設・推薦）', cost: '~$0.002 / 次' },
+      { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash（備用）',       cost: '~$0.002 / 次' },
     ]
   },
   claude: {
@@ -704,7 +704,7 @@ function toggleChip(el, group) {
 
 // ===== MODEL & COST =====
 function getSelectedModel() {
-  return document.getElementById('modelSelect')?.value || 'gemini-3.6-flash';
+  return document.getElementById('modelSelect')?.value || 'gemini-3.7-flash';
 }
 
 function updateCostBadge() {
