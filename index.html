@@ -112,6 +112,18 @@
   .subject-chip { border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 13px; cursor: pointer; transition: all 0.2s; background: var(--card); }
   .subject-chip.selected { border-color: var(--accent); background: #FFF3EF; color: var(--accent); font-weight: 500; }
 
+  /* 補充提示（自訂提示詞） */
+  .hint-row { margin-bottom: 16px; }
+  .hint-row label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: block; }
+  .hint-input-wrap { position: relative; display: flex; align-items: center; }
+  /* font-size 16px：避免 iOS Safari 聚焦時自動放大頁面 */
+  .hint-input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 11px 38px 11px 12px; font-size: 16px; font-family: inherit; color: var(--text); background: var(--card); outline: none; transition: border 0.2s; }
+  .hint-input::placeholder { color: #9CA3AF; }
+  .hint-input:focus { border-color: var(--accent); }
+  .hint-clear { position: absolute; right: 8px; background: #F3F4F6; color: var(--muted); border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .hint-tag { display: inline-block; font-size: 12px; background: #FFF3EF; color: var(--accent); border: 1px solid #FFD9CC; border-radius: 20px; padding: 2px 10px; margin-left: 8px; vertical-align: middle; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .notice-box { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: #92400E; margin-top: 12px; }
+
   /* Action button */
   .action-btn { width: 100%; padding: 14px; border: none; border-radius: var(--radius); font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
   .action-btn.primary { background: var(--primary); color: white; }
@@ -235,7 +247,8 @@
     /* API input stacks */
     .api-input-row { flex-direction: column; }
     .api-input-row button { width: 100%; padding: 12px; font-size: 15px; }
-    .api-input-row input { font-size: 14px; padding: 10px 12px; }
+    /* 16px：避免 iOS Safari 聚焦輸入框時自動放大頁面 */
+    .api-input-row input { font-size: 16px; padding: 10px 12px; }
 
     /* Floating bottom action area so thumb can reach */
     .sticky-action { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); padding: 12px 16px; border-top: 1px solid var(--border); z-index: 50; box-shadow: 0 -4px 12px rgba(0,0,0,0.06); }
@@ -343,6 +356,16 @@
       <div class="subject-chip" onclick="toggleSubject(this)" data-subject="國語">國語</div>
       <div class="subject-chip" onclick="toggleSubject(this)" data-subject="英語">英語</div>
       <div class="subject-chip" onclick="toggleSubject(this)" data-subject="生活/自然">生活/自然</div>
+    </div>
+  </div>
+
+  <div class="hint-row">
+    <label for="hwHint">補充提示（選填，用自己的話補充作業類型或需求）</label>
+    <div class="hint-input-wrap">
+      <input type="text" id="hwHint" class="hint-input" maxlength="120" autocomplete="off"
+             enterkeyhint="done" oninput="updateHintUI()"
+             placeholder="例：這是童詩作業，請幫忙提點寫作方向">
+      <button type="button" class="hint-clear" id="hwHintClear" onclick="clearHint()" title="清除提示" style="display:none">✕</button>
     </div>
   </div>
 
@@ -696,6 +719,23 @@ function toggleSubject(el) {
   selectedSubject = el.dataset.subject;
 }
 
+// ===== 補充提示（自訂提示詞）=====
+// 刻意不存進 localStorage：避免上次的提示在下一份作業上悄悄生效。
+function getHint() {
+  return (document.getElementById('hwHint')?.value || '').trim();
+}
+
+function updateHintUI() {
+  const btn = document.getElementById('hwHintClear');
+  if (btn) btn.style.display = getHint() ? 'flex' : 'none';
+}
+
+function clearHint() {
+  const input = document.getElementById('hwHint');
+  if (input) input.value = '';
+  updateHintUI();
+}
+
 // ===== OPTION CHIPS =====
 function toggleChip(el, group) {
   document.querySelectorAll(`[data-group="${group}"]`).forEach(c => c.classList.remove('selected'));
@@ -717,8 +757,12 @@ function updateCostBadge() {
 }
 
 // ===== UNIFIED AI CALL（SSE 串流）=====
+// 上一次呼叫是否因為輸出額度用完而被截斷（Gemini 3.x 的思考 token 也算在輸出額度內）
+let lastResponseTruncated = false;
+
 // onChunk(累積全文)：每收到一段就回呼，用於即時渲染
 async function callAI(prompt, images, onChunk) {
+  lastResponseTruncated = false;
   const key = getCurrentKey();
   if (!key) {
     alert(`請先輸入並儲存 ${PROVIDERS[currentProvider].name} API Key！`);
@@ -766,13 +810,21 @@ async function callGemini(prompt, images, key, onChunk) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 8192 } })
+    // Gemini 3.x 的思考（thinking）token 也算在 maxOutputTokens 內，上限開大避免答案被吃掉。
+    // 只有實際產生的 token 才計費，開大不會多花錢。
+    body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 32768 } })
   });
   if (!res.ok) throw await apiError(res, 'Gemini');
   let full = '';
   await readSSE(res, d => {
-    const t = d.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (t) { full += t; if (onChunk) onChunk(full); }
+    const cand = d.candidates?.[0];
+    let added = false;
+    for (const p of (cand?.content?.parts || [])) {
+      if (p.thought) continue;            // 思考過程不顯示給家長
+      if (p.text) { full += p.text; added = true; }
+    }
+    if (cand?.finishReason === 'MAX_TOKENS') lastResponseTruncated = true;
+    if (added && onChunk) onChunk(full);
   });
   return full;
 }
@@ -800,6 +852,7 @@ async function callClaude(prompt, images, key, onChunk) {
       full += d.delta.text;
       if (onChunk) onChunk(full);
     }
+    if (d.type === 'message_delta' && d.delta?.stop_reason === 'max_tokens') lastResponseTruncated = true;
   });
   return full;
 }
@@ -810,16 +863,23 @@ async function callOpenAI(prompt, images, key, onChunk) {
     content.push({ type: 'image_url', image_url: { url: img.dataUrl } });
   }
   content.push({ type: 'text', text: prompt });
+  const model = getSelectedModel();
+  // GPT-5 以後改用 max_completion_tokens，送舊的 max_tokens 會被 400 退回。
+  // 推理（reasoning）token 同樣算在這個額度內，所以開得比舊值大。
+  const body = { model, messages: [{ role: 'user', content }], stream: true };
+  if (/^gpt-[0-4]/.test(model)) body.max_tokens = 8192;
+  else body.max_completion_tokens = 16384;
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: getSelectedModel(), messages: [{ role: 'user', content }], max_tokens: 8192, stream: true })
+    body: JSON.stringify(body)
   });
   if (!res.ok) throw await apiError(res, 'OpenAI');
   let full = '';
   await readSSE(res, d => {
     const t = d.choices?.[0]?.delta?.content;
     if (t) { full += t; if (onChunk) onChunk(full); }
+    if (d.choices?.[0]?.finish_reason === 'length') lastResponseTruncated = true;
   });
   return full;
 }
@@ -837,16 +897,22 @@ async function runHomework() {
   showProgress('hw');
   resultsEl.innerHTML = '';
 
+  const userHint = getHint();
   const subjectHint = selectedSubject ? `這是${selectedSubject}作業。` : '';
+  const extraHint = userHint ? `家長補充說明：「${userHint}」——請務必依照這個需求調整你的回答重點。\n` : '';
   const prompt = `你是一位親切的台灣國小老師助理，幫助家長批閱孩子的作業。
 ${subjectHint}
-請仔細看這${hwImages.length}頁作業圖片，並依照以下格式回答：
+${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下格式回答：
 
-1. 先列出每一頁的所有題目。
-2. 針對每一題，給出正確答案，並簡短說明（一句話即可）。
-3. 若有計算題，請給出完整解題步驟。
-4. 若題目有錯誤或缺頁，請說明。
-5. 若孩子在圖片中寫的答案是錯的，請把正確答案（或需要訂正的內容）用 <mark>這個標籤</mark> 包起來，例如孩子把 5+3 算成 9，就寫成：正確答案是 <mark>8</mark>（不是 9）。孩子答對的題目維持一般文字，不要加這個標籤，只有需要訂正的地方才用。
+## 需要訂正
+先用條列列出所有寫錯或空白的題目：題號 → 錯在哪裡 → 正確答案。若全部正確，就只寫「這次全對 🎉」。
+
+## 逐題說明
+接著依序說明每一題：
+1. 給出正確答案，並簡短說明（一句話即可）。
+2. 計算題請給完整解題步驟。
+3. 題目看不清楚、拍不完整或缺頁，直接說明，不要臆測。
+4. 孩子寫錯的地方，請把正確答案（或需要訂正的內容）用 <mark>這個標籤</mark> 包起來，例如孩子把 5+3 算成 9，就寫成：正確答案是 <mark>8</mark>（不是 9）。孩子答對的題目維持一般文字，不要加這個標籤，只有需要訂正的地方才用。
 
 請以繁體中文回答，格式清楚。每題之間請空一行。`;
 
@@ -860,10 +926,12 @@ ${subjectHint}
     });
     setProgress('hw', 100);
     if (text === null) { resultsEl.innerHTML = ''; return; } // 未設定 API Key，已 alert
-    if (!text) throw new Error('回應為空');
+    if (!text) throw new Error(lastResponseTruncated
+      ? '這次沒有產出內容（模型思考用光了額度）。請減少頁數或換較快的模型再試一次。'
+      : '回應為空，請再試一次');
     resultsEl.innerHTML = '';
-    renderHomeworkResult(text);
-    saveHistory('hw', text);
+    renderHomeworkResult(text, userHint, lastResponseTruncated);
+    saveHistory('hw', text, null, userHint);
     loadHistoryUI('hw');
   } catch (e) {
     resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
@@ -874,11 +942,31 @@ ${subjectHint}
   }
 }
 
-function renderHomeworkResult(text) {
+function renderHomeworkResult(text, usedHint, truncated) {
   const resultsEl = document.getElementById('hwResults');
   const card = document.createElement('div');
   card.className = 'result-card';
-  card.innerHTML = `<div class="result-page">解題結果</div><div class="md-body">${DOMPurify.sanitize(marked.parse(text))}</div>`;
+  const head = document.createElement('div');
+  head.className = 'result-page';
+  head.textContent = '解題結果';
+  // 顯示這次套用了哪個補充提示（textContent 寫入，不走 innerHTML）
+  if (usedHint) {
+    const tag = document.createElement('span');
+    tag.className = 'hint-tag';
+    // 截短避免長提示在手機上撐破版面（完整內容仍存在歷史紀錄裡）
+    tag.textContent = '提示：' + (usedHint.length > 24 ? usedHint.slice(0, 24) + '…' : usedHint);
+    head.appendChild(tag);
+  }
+  const body = document.createElement('div');
+  body.className = 'md-body';
+  body.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  card.append(head, body);
+  if (truncated) {
+    const notice = document.createElement('div');
+    notice.className = 'notice-box';
+    notice.textContent = '⚠️ 內容較長，回答可能沒有寫完。建議分批拍攝（一次 1–2 頁）再解一次。';
+    card.appendChild(notice);
+  }
   resultsEl.appendChild(card);
   // New question button
   const btn = document.createElement('button');
@@ -1058,7 +1146,8 @@ function speakNext(readLang) {
 }
 
 function stopTTS() {
-  speechSynthesis.cancel();
+  // 少數瀏覽器沒有語音合成 API；沒有防護的話會讓「新題目」「切換分頁」整個壞掉
+  if (window.speechSynthesis) speechSynthesis.cancel();
   highlightSegment(-1);
   currentSegIdx = -1;
 }
@@ -1079,6 +1168,8 @@ function resetPanel(prefix) {
   clearImages(prefix);
   stopTTS();
   document.getElementById(prefix + 'Results').innerHTML = '';
+  // 「新題目」= 全新一份作業，順手清掉上一份的補充提示，避免它悄悄套用到下一份
+  if (prefix === 'hw') clearHint();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1101,16 +1192,18 @@ const MAX_HISTORY = 10;
   });
 })();
 
-function saveHistory(prefix, text, readLang) {
+function saveHistory(prefix, text, readLang, hint) {
   const key = HISTORY_KEY[prefix];
   let arr = [];
   try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
   arr.unshift({
     ts: Date.now(),
     subject: prefix === 'hw' ? (selectedSubject || '作業') : '繪本',
-    preview: text.slice(0, 80),
+    // 去掉 markdown 與 HTML 標籤，預覽才不會出現 <mark> 這種字樣
+    preview: text.replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80),
     full: text,
-    readLang: readLang || null
+    readLang: readLang || null,
+    hint: hint || null
   });
   if (arr.length > MAX_HISTORY) arr = arr.slice(0, MAX_HISTORY);
   try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e) {}
@@ -1136,10 +1229,12 @@ function loadHistoryUI(prefix) {
     div.className = 'history-item';
     const meta = document.createElement('div');
     meta.className = 'h-meta';
-    meta.textContent = `${timeStr}　${item.subject}`;
+    const hintNote = item.hint ? `　💬 ${item.hint.slice(0, 14)}${item.hint.length > 14 ? '…' : ''}` : '';
+    meta.textContent = `${timeStr}　${item.subject}${hintNote}`;
     const prev = document.createElement('div');
     prev.className = 'h-preview';
-    prev.textContent = item.preview.replace(/[#*\n]/g, ' ') + '…';
+    // 舊資料的 preview 可能還含 markdown／HTML 標記，這裡再清一次
+    prev.textContent = item.preview.replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').trim() + '…';
     div.append(meta, prev);
     div.onclick = () => restoreHistory(prefix, item);
     listEl.appendChild(div);
@@ -1150,7 +1245,7 @@ function restoreHistory(prefix, item) {
   const resultsEl = document.getElementById(prefix + 'Results');
   resultsEl.innerHTML = '';
   if (prefix === 'hw') {
-    renderHomeworkResult(item.full);
+    renderHomeworkResult(item.full, item.hint, false);
   } else {
     renderReadingResult(item.full, item.readLang || 'zh');
   }
