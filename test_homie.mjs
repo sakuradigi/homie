@@ -42,6 +42,13 @@ win.speechSynthesis = {
   finish() { const u = curU; curU = null; this.speaking = false; if (u && u.onend) u.onend(); },
   current: () => curU
 };
+// 模擬 <audio>：記錄播放過的 src，測試裡手動觸發 onended
+const played = [];
+win.Audio = class { constructor() { this.src = ''; } play() { if (!this.src.startsWith('data:')) played.push(this.src); return Promise.resolve(); } pause() {} };
+let blobN = 0;
+const blobs = {};
+win.URL.createObjectURL = (b) => { const u = 'blob:' + (++blobN); blobs[u] = b; return u; };
+win.URL.revokeObjectURL = () => {};
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const pageScript = html.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/)[1];
@@ -56,7 +63,10 @@ window.__T = {
   truncated: () => lastResponseTruncated,
   state: () => ({ playIdx, isPlaying, len: playlist.length, kinds: playlist.map(p => p.kind) }),
   stubCompress: (fn) => { compressImage = fn; },
-  rdImages: () => rdImages
+  rdImages: () => rdImages,
+  audio: () => ttsAudio,
+  cacheSize: () => ttsCache.size,
+  setRetry: (ms) => { TTS_RETRY_MS = ms; }
 };`);
 
 const T = win.__T;
@@ -268,6 +278,103 @@ win.clearImages('rd');
 T.stubCompress((f) => new Promise(r => setTimeout(() => r({ mime: 'image/jpeg', dataUrl: 'data:,' + f.name }), f.delay)));
 await win.addImages([{ name: 'P1', delay: 60 }, { name: 'P2', delay: 5 }, { name: 'P3', delay: 30 }], 'rd');
 check('壓縮快慢不同，頁序仍照選取順序', T.rdImages().map(i => i.dataUrl).join() === 'data:,P1,data:,P2,data:,P3', T.rdImages().map(i => i.dataUrl).join());
+
+// ── 13. AI 自然語音 ─────────────────────────────────
+win.localStorage.clear();
+win.renderReadingResult(BOOK, 'zh');
+const engSel = win.document.getElementById('ttsEngine');
+check('沒有 Key 時 AI 語音選項停用', [...engSel.options].filter(o => o.disabled).length === 2 && engSel.value === 'browser');
+
+win.localStorage.setItem('homie_gemini_key', 'AIza-test');
+win.renderReadingResult(BOOK, 'zh');
+check('有 Gemini Key 時預設用 Gemini AI 語音', win.document.getElementById('ttsEngine').value === 'gemini');
+check('語音選單換成 Gemini 音色', win.document.getElementById('ttsVoice').options[0].value === 'Sulafat');
+
+// Gemini 回傳 base64 PCM（無檔頭）
+const pcm = new Uint8Array(480);   // 10ms 靜音
+const pcmB64 = Buffer.from(pcm).toString('base64');
+const ttsCalls = [];
+win.fetch = async (url, opt) => {
+  ttsCalls.push({ url, headers: opt.headers, body: JSON.parse(opt.body) });
+  return { ok: true, status: 200, json: async () => ({ steps: [{ type: 'model_output', content: [{ type: 'audio', data: pcmB64 }] }] }) };
+};
+played.length = 0;
+win.playFrom(0);
+await sleep(30);
+const g = ttsCalls[0];
+check('Gemini TTS 端點與模型', g.url.endsWith('/v1beta/interactions') && g.body.model === 'gemini-3.8-flash-tts', g.url + ' ' + g.body.model);
+check('Gemini Key 放在 header', g.headers['x-goog-api-key'] === 'AIza-test');
+check('Gemini 帶音色與台灣口音語氣', g.body.generation_config.speech_config[0].voice === 'Sulafat' &&
+  g.body.input[0].content[0].annotations[0].style.includes('台灣國語'));
+check('Gemini 送的是原文句子', g.body.input[0].content[0].text === '小熊說：「我好餓。」');
+check('有開始播放音檔', played.length === 1);
+const wav = blobs[played[0]];
+const head = new Uint8Array(await wav.arrayBuffer());
+check('原始 PCM 補上 WAV 檔頭', wav.type === 'audio/wav' && String.fromCharCode(...head.slice(0, 4)) === 'RIFF' && head.length === 44 + 480);
+check('WAV 檔頭取樣率 24kHz', new DataView(head.buffer).getUint32(24, true) === 24000);
+check('播放時預先產生後兩句', ttsCalls.length === 3, String(ttsCalls.length));
+
+// 唸完自動接下一句，且用的是預先產生好的音檔（不再打 API）
+T.audio().onended();
+await sleep(30);
+check('唸完接下一句', played.length === 2 && T.state().playIdx === 1);
+check('下一句直接用快取，不重複呼叫 API', ttsCalls.filter(c => c.body.input[0].content[0].text === '他走進森林。').length === 1);
+
+// 點已經產生過的句子：不再付費
+const callsBefore = ttsCalls.length;
+win.document.querySelectorAll('#rdResults .para-segment')[0].click();
+await sleep(30);
+check('重聽同一句不重複產生', ttsCalls.filter(c => c.body.input[0].content[0].text === '小熊說：「我好餓。」').length === 1);
+
+// 暫停：音檔停下、onended 不再接續
+win.pausePlayback();
+check('暫停後狀態正確', !T.state().isPlaying && T.state().playIdx === 0);
+
+// 429 → 重試成功
+T.setRetry(1);
+let n429 = 0;
+win.fetch = async (url, opt) => {
+  ttsCalls.push({ url, body: JSON.parse(opt.body) });
+  if (n429++ === 0) return { ok: false, status: 429, json: async () => ({}) };
+  return { ok: true, status: 200, json: async () => ({ steps: [{ type: 'model_output', content: [{ type: 'audio', data: pcmB64 }] }] }) };
+};
+played.length = 0;
+win.playFrom(3);
+await sleep(50);
+check('遇到 429 會自動重試', played.length === 1 && T.state().isPlaying, JSON.stringify({ played: played.length, n429 }));
+win.pausePlayback();
+
+// 失敗 → 自動改用手機內建語音接著唸
+win.renderReadingResult('===第1頁===\n全新的一句話在這裡。', 'zh');
+win.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid' } }) });
+spoken.length = 0;
+win.playFrom(0);
+await sleep(30);
+check('AI 語音失敗時改用內建語音唸同一句', spoken[0] === '全新的一句話在這裡。', JSON.stringify(spoken));
+check('失敗時顯示原因', win.document.getElementById('plNotice').textContent.includes('API key not valid'));
+check('失敗只切換畫面、不改存檔設定', win.document.getElementById('ttsEngine').value === 'browser' && win.localStorage.getItem('homie_tts_engine') === null);
+win.stopTTS(); await sleep(20);
+
+// OpenAI TTS 參數
+win.localStorage.setItem('homie_openai_key', 'sk-test');
+win.localStorage.setItem('homie_tts_engine', 'openai');
+win.renderReadingResult('===第1頁===\nOpenAI 這一句。', 'zh');
+let oa = null;
+win.fetch = async (url, opt) => { oa = { url, headers: opt.headers, body: JSON.parse(opt.body) };
+  return { ok: true, status: 200, blob: async () => new win.Blob(['x'], { type: 'audio/mpeg' }) }; };
+win.playFrom(0);
+await sleep(30);
+check('OpenAI TTS 端點與模型', oa.url === 'https://api.openai.com/v1/audio/speech' && oa.body.model === 'gpt-4o-mini-tts');
+check('OpenAI 預設音色 marin、帶語氣指示', oa.body.voice === 'marin' && oa.body.instructions.includes('台灣國語'));
+check('OpenAI 用 Bearer Key', oa.headers.Authorization === 'Bearer sk-test');
+win.stopTTS();
+
+// 英文繪本用英文語氣
+win.renderReadingResult('===Page 1===\nThe bear is hungry.', 'en');
+win.playFrom(0);
+await sleep(30);
+check('英文繪本用英文說故事語氣', oa.body.instructions.startsWith('Warm'));
+win.stopTTS();
 
 console.log(results.join('\n'));
 const pass = results.filter(r => r.startsWith('PASS')).length;

@@ -150,6 +150,7 @@
   .pl-btn.play { background: var(--accent); border-color: var(--accent); color: white; font-weight: 700; min-width: 100px; }
   .pl-status { font-size: 12px; color: var(--muted); margin-left: 4px; flex: 1; min-width: 120px; }
   .player-opts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .player.collapsed .player-opts { display: none; }
   .pl-notice { font-size: 12px; color: #92400E; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
   .speed-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; background: var(--card); }
   .voice-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; flex: 1; min-width: 140px; background: var(--card); }
@@ -578,6 +579,7 @@ function saveApiKey() {
   if (!key) { alert('請先輸入 API Key'); return; }
   localStorage.setItem(PROVIDERS[currentProvider].storageKey, key);
   showApiSaved();
+  if (document.getElementById('ttsEngine')) { populateEngines(); populateVoices(currentReadLang); }
 }
 function showApiSaved() {
   document.getElementById('apiSaved').classList.add('show');
@@ -1111,6 +1113,7 @@ function renderReadingResult(text, readLang) {
 
   resultsEl.prepend(buildPlayer());
   document.getElementById('ttsSpeed').value = lsGet('homie_tts_rate', '1');
+  populateEngines();
   populateVoices(readLang);
   buildPlaylist();
 
@@ -1124,7 +1127,8 @@ function renderReadingResult(text, readLang) {
 
 function buildPlayer() {
   const el = document.createElement('div');
-  el.className = 'player';
+  // 聲音設定列可收合（手機畫面小，收起來能多看幾行字）；收合狀態會記住
+  el.className = 'player' + (lsGet('homie_player_opts') === 'closed' ? ' collapsed' : '');
   el.id = 'rdPlayer';
   el.innerHTML = `
     <div class="player-main">
@@ -1132,9 +1136,11 @@ function buildPlayer() {
       <button class="pl-btn play" id="plPlay" onclick="togglePlay()">▶ 播放</button>
       <button class="pl-btn" onclick="skipItem(1)" title="下一句" aria-label="下一句">⏭</button>
       <button class="pl-btn" onclick="playFrom(0)" title="從頭開始" aria-label="從頭開始">↺</button>
+      <button class="pl-btn" onclick="togglePlayerOpts()" title="聲音設定" aria-label="聲音設定">⚙</button>
       <span class="pl-status" id="plStatus"></span>
     </div>
     <div class="player-opts">
+      <select class="voice-select" id="ttsEngine" onchange="onEngineChange()" aria-label="語音引擎"></select>
       <select class="speed-select" id="ttsSpeed" onchange="onSpeedChange()" aria-label="語速">
         <option value="0.7">慢 0.7x</option>
         <option value="0.85">0.85x</option>
@@ -1148,16 +1154,26 @@ function buildPlayer() {
   return el;
 }
 
+function togglePlayerOpts() {
+  const el = document.getElementById('rdPlayer');
+  el.classList.toggle('collapsed');
+  lsSet('homie_player_opts', el.classList.contains('collapsed') ? 'closed' : 'open');
+}
+
 function getRate() {
   return parseFloat(document.getElementById('ttsSpeed')?.value || lsGet('homie_tts_rate', '1')) || 1;
 }
 
 function onSpeedChange() {
   lsSet('homie_tts_rate', String(getRate()));
+  if (ttsAudio) ttsAudio.playbackRate = getRate();   // AI 語音可以當句立即變速
 }
 
+// 手機內建語音依語言記（中文、英文各一個）；AI 語音依引擎記
 function onVoiceChange() {
-  lsSet('homie_voice_' + currentReadLang, document.getElementById('ttsVoice').value);
+  const engine = activeEngine();
+  lsSet('homie_voice_' + (engine === 'browser' ? currentReadLang : engine), document.getElementById('ttsVoice').value);
+  if (isPlaying) playFrom(playIdx);   // 換聲音立刻從這句重唸，馬上聽得出差別
 }
 
 function showPlayerNotice(msg) {
@@ -1187,6 +1203,7 @@ function voiceScore(v, lang) {
   if (/natural|neural|online|premium|enhanced|增強|優化/.test(n)) s += 30;
   if (v.localService === false) s += 5;   // 雲端語音通常比較自然
   if (NOVELTY_VOICES.test(n)) s -= 100;
+  if (/^(eddy|flo|grandma|grandpa|reed|rocko|sandy|shelley)\b/.test(n)) s -= 10;   // Apple 角色語音，不如美佳等標準語音自然
   return s;
 }
 
@@ -1206,6 +1223,17 @@ function pickBrowserVoice(lang) {
 }
 
 function populateVoices(readLang) {
+  const engine = activeEngine();
+  if (engine === 'browser') return populateBrowserVoices(readLang);
+  const sel = document.getElementById('ttsVoice');
+  if (!sel) return;
+  const cfg = TTS_ENGINES[engine];
+  sel.innerHTML = '';
+  cfg.voices.forEach(([v, label]) => sel.add(new Option(`${label}（${v}）`, v)));
+  sel.value = cloudVoice(engine, 'read');
+}
+
+function populateBrowserVoices(readLang) {
   const sel = document.getElementById('ttsVoice');
   if (!sel) return;
   const list = voicesFor(readLang);
@@ -1236,6 +1264,7 @@ function buildPlaylist() {
 function playFrom(idx) {
   if (!playlist.length || idx < 0) return;
   haltSpeech();
+  if (activeEngine() !== 'browser') unlockAudio();
   playIdx = Math.min(idx, playlist.length - 1);
   isPlaying = true;
   speakCurrent(++playSession);
@@ -1290,10 +1319,14 @@ function speakCurrent(session) {
 }
 
 function speakItem(item, session, done) {
-  speakBrowser(item, session, done);
+  const engine = activeEngine();
+  if (engine === 'browser') speakBrowser(item, session, done);
+  else speakCloud(engine, item, session, done);
 }
 
 function haltSpeech() {
+  if (ttsAudio) { ttsAudio.onended = null; ttsAudio.onerror = null; ttsAudio.pause(); }
+  isLoading = false;
   if (!window.speechSynthesis) return;   // 少數瀏覽器沒有語音合成 API
   speechWasActive = speechSynthesis.speaking || speechSynthesis.pending;
   speechSynthesis.cancel();
@@ -1331,6 +1364,252 @@ function speakBrowser(item, session, done) {
   }
 }
 
+
+// ===== AI 自然語音（Gemini／OpenAI TTS）=====
+// 一樣是瀏覽器直接呼叫供應商 API、用使用者自己的 Key，不經過任何伺服器。
+// 一句產生一段音檔：點哪句播哪句、暫停續播都很準；播放時順手預先產生後兩句，聽起來不會一句一頓。
+const GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
+const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
+let TTS_RETRY_MS = 1500;   // 遇到 429（太頻繁）時的等待基數
+
+// voices：[音色 ID, 中文描述]；teacher／teacherAlt：智慧陪讀「小老師」用的聲音（與旁白不同才分得出來）
+const TTS_ENGINES = {
+  browser: { label: '📱 手機內建語音（免費）' },
+  gemini: {
+    label: '✨ AI 自然語音・Gemini',
+    voices: [['Sulafat', '溫暖'], ['Vindemiatrix', '溫柔'], ['Achird', '親切'], ['Leda', '活潑'],
+             ['Aoede', '輕快'], ['Despina', '柔順'], ['Puck', '開朗'], ['Charon', '沉穩']],
+    teacher: 'Achird', teacherAlt: 'Leda',
+    note: 'AI 語音會使用你的 Gemini API 額度，同一句只產生一次。'
+  },
+  openai: {
+    label: '✨ AI 自然語音・OpenAI',
+    voices: [['marin', '自然（推薦）'], ['cedar', '沉穩（推薦）'], ['coral', '溫暖'], ['nova', '明亮'],
+             ['shimmer', '柔和'], ['sage', '平靜']],
+    teacher: 'coral', teacherAlt: 'nova',
+    note: 'AI 語音會使用你的 OpenAI API 額度（約 US$0.015／分鐘），同一句只產生一次。'
+  }
+};
+
+const ttsCache = new Map();   // 快取 key → Promise<blob URL>
+let ttsAudio = null;          // 全程共用同一個 <audio>，iOS 解鎖一次就能一直播
+let audioUnlocked = false;
+let isLoading = false;
+let mediaSessionReady = false;
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+
+function engineKey(engine) {
+  return engine === 'browser' ? '' : lsGet(PROVIDERS[engine].storageKey);
+}
+
+function populateEngines() {
+  const sel = document.getElementById('ttsEngine');
+  if (!sel) return;
+  sel.innerHTML = '';
+  Object.entries(TTS_ENGINES).forEach(([id, cfg]) => {
+    const ok = id === 'browser' || !!engineKey(id);
+    const opt = new Option(cfg.label + (ok ? '' : '（需先儲存 Key）'), id);
+    opt.disabled = !ok;
+    sel.add(opt);
+  });
+  // 沒選過：有 Gemini Key 就預設用 Gemini AI 語音，否則用手機內建（OpenAI 要錢，需自己選）
+  const saved = lsGet('homie_tts_engine', engineKey('gemini') ? 'gemini' : 'browser');
+  sel.value = saved === 'browser' || engineKey(saved) ? saved : 'browser';
+}
+
+// 實際使用的引擎（Key 被刪掉就自動退回手機內建）
+function activeEngine() {
+  const v = document.getElementById('ttsEngine')?.value || 'browser';
+  return v === 'browser' || engineKey(v) ? v : 'browser';
+}
+
+function onEngineChange() {
+  const engine = document.getElementById('ttsEngine').value;
+  lsSet('homie_tts_engine', engine);
+  showPlayerNotice(TTS_ENGINES[engine].note || '');
+  populateVoices(currentReadLang);
+  if (isPlaying) playFrom(playIdx);
+}
+
+function cloudVoice(engine, role) {
+  const cfg = TTS_ENGINES[engine];
+  const saved = lsGet('homie_voice_' + engine);
+  const narrator = cfg.voices.some(([v]) => v === saved) ? saved : cfg.voices[0][0];
+  if (role === 'read') return narrator;
+  return narrator === cfg.teacher ? cfg.teacherAlt : cfg.teacher;
+}
+
+// 語氣指示（兩家都是用自然語言描述想要的唸法，不會被唸出來）
+function cloudStyle(role) {
+  if (role === 'teacher') return '像親切的台灣國小老師在跟小朋友說話：溫柔、有耐心、帶點笑意，語速稍慢。使用台灣國語口音（Taiwanese Mandarin accent）。';
+  if (currentReadLang === 'en') return 'Warm, clear, gentle storytelling voice, slightly slow, like reading a picture book aloud to a young child.';
+  return '用溫暖、清楚、速度稍慢的語氣，像在唸繪本給小朋友聽，角色對話可以帶一點感情。使用台灣國語口音（Taiwanese Mandarin accent）。';
+}
+
+function roleOf(item) { return item.kind === 'read' ? 'read' : 'teacher'; }
+
+function getCloudAudio(engine, item) {
+  const role = roleOf(item);
+  const voice = cloudVoice(engine, role);
+  const k = [engine, voice, role, currentReadLang, item.text].join('|');
+  if (!ttsCache.has(k)) {
+    const p = synthCloud(engine, item.text, voice, cloudStyle(role)).then(blob => URL.createObjectURL(blob));
+    p.catch(() => ttsCache.delete(k));   // 失敗不留快取，下次可以重試
+    ttsCache.set(k, p);
+    if (ttsCache.size > 300) {           // 上限：丟掉最舊的一筆並釋放記憶體
+      const [oldK, oldP] = ttsCache.entries().next().value;
+      ttsCache.delete(oldK);
+      oldP.then(u => URL.revokeObjectURL(u)).catch(() => {});
+    }
+  }
+  return ttsCache.get(k);
+}
+
+async function synthCloud(engine, text, voice, style) {
+  const key = engineKey(engine);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return engine === 'gemini' ? await ttsGemini(text, voice, style, key) : await ttsOpenAI(text, voice, style, key);
+    } catch (e) {
+      if (e.status === 429 && attempt < 2) { await new Promise(r => setTimeout(r, TTS_RETRY_MS * (attempt + 1))); continue; }
+      throw e;
+    }
+  }
+}
+
+async function ttsError(res, name) {
+  const e = await apiError(res, name);
+  e.status = res.status;
+  return e;
+}
+
+async function ttsGemini(text, voice, style, key) {
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      model: GEMINI_TTS_MODEL,
+      input: [{ type: 'user_input', content: [{ type: 'text', text, annotations: [{ type: 'speech_metadata', style }] }] }],
+      response_format: { type: 'audio', mime_type: 'audio/wav', sample_rate: 24000 },
+      generation_config: { speech_config: [{ voice }] },
+      stream: false
+    })
+  });
+  if (!res.ok) throw await ttsError(res, 'Gemini 語音');
+  const d = await res.json();
+  const audio = (d.steps || []).filter(st => st.type === 'model_output')
+    .flatMap(st => st.content || []).filter(c => c.type === 'audio' && c.data).pop();
+  if (!audio) throw new Error('Gemini 沒有回傳語音');
+  const bytes = b64ToBytes(audio.data);
+  // 預設回傳 WAV；若拿到的是沒有檔頭的原始 PCM（24kHz／16-bit／單聲道），自己補上 WAV 檔頭
+  return isWav(bytes) ? new Blob([bytes], { type: 'audio/wav' }) : pcmToWav(bytes, 24000);
+}
+
+async function ttsOpenAI(text, voice, style, key) {
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: OPENAI_TTS_MODEL, voice, input: text, instructions: style, response_format: 'mp3' })
+  });
+  if (!res.ok) throw await ttsError(res, 'OpenAI 語音');
+  return await res.blob();
+}
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function isWav(b) {
+  return b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46;   // "RIFF"
+}
+
+function pcmToWav(pcm, rate) {
+  const h = new DataView(new ArrayBuffer(44));
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) h.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); h.setUint32(4, 36 + pcm.length, true); str(8, 'WAVE');
+  str(12, 'fmt '); h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true);
+  h.setUint32(24, rate, true); h.setUint32(28, rate * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true);
+  str(36, 'data'); h.setUint32(40, pcm.length, true);
+  return new Blob([h.buffer, pcm], { type: 'audio/wav' });
+}
+
+function getAudioEl() {
+  if (!ttsAudio) { ttsAudio = new Audio(); ttsAudio.preload = 'auto'; }
+  return ttsAudio;
+}
+
+// iOS 要求在「使用者點擊當下」開始播放；先播一段無聲音檔解鎖，之後等 AI 產生完再換音檔就能播
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  const a = getAudioEl();
+  a.src = SILENT_WAV;
+  a.play()?.catch?.(() => {});
+}
+
+async function speakCloud(engine, item, session, done) {
+  isLoading = true;
+  updatePlayerUI();
+  let url;
+  try {
+    url = await getCloudAudio(engine, item);
+  } catch (e) {
+    if (session === playSession) cloudFailed(e, item, session, done);
+    return;
+  }
+  if (session !== playSession) return;
+  isLoading = false;
+  for (let j = playIdx + 1; j <= playIdx + 2 && j < playlist.length; j++) {
+    getCloudAudio(engine, playlist[j]).catch(() => {});   // 預先產生後兩句
+  }
+  const a = getAudioEl();
+  a.onended = () => { if (session === playSession) done(); };
+  a.onerror = () => { if (session === playSession) cloudFailed(new Error('音檔無法播放'), item, session, done); };
+  a.src = url;
+  a.playbackRate = getRate();
+  updatePlayerUI();
+  const p = a.play();
+  if (p && p.catch) p.catch(err => {
+    if (session !== playSession) return;
+    if (err && err.name === 'NotAllowedError') { pausePlayback(); showPlayerNotice('請再按一次 ▶ 播放'); }
+    else if (!err || err.name !== 'AbortError') cloudFailed(err || new Error('播放失敗'), item, session, done);
+  });
+}
+
+// AI 語音失敗（Key 錯、額度用完、網路斷）：這次先改用手機內建語音接著唸，不讓孩子卡住
+function cloudFailed(e, item, session, done) {
+  isLoading = false;
+  const sel = document.getElementById('ttsEngine');
+  if (sel) sel.value = 'browser';   // 只改畫面不存設定，下次打開仍會先試 AI 語音
+  populateVoices(currentReadLang);
+  showPlayerNotice(`AI 語音暫時無法使用（${e.message || e}），先改用手機內建語音。可在選單切回 AI 語音再試。`);
+  speakBrowser(item, session, done);
+}
+
+// 鎖螢幕／通知列的播放控制（Android Chrome、iOS Safari 播 <audio> 時會出現）
+function updateMediaSession() {
+  if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
+  try {
+    const cur = playlist[playIdx];
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: cur ? cur.text.slice(0, 40) : '繪本朗讀',
+      artist: 'Homie 繪本朗讀',
+      artwork: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }]
+    });
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    if (!mediaSessionReady) {
+      mediaSessionReady = true;
+      navigator.mediaSession.setActionHandler('play', () => { if (!isPlaying) togglePlay(); });
+      navigator.mediaSession.setActionHandler('pause', () => { if (isPlaying) pausePlayback(); });
+      navigator.mediaSession.setActionHandler('previoustrack', () => skipItem(-1));
+      navigator.mediaSession.setActionHandler('nexttrack', () => skipItem(1));
+    }
+  } catch (e) {}
+}
+
 function highlightItem(idx) {
   document.querySelectorAll('.para-segment.active').forEach(el => el.classList.remove('active'));
   const el = playlist[idx]?.el;
@@ -1339,7 +1618,8 @@ function highlightItem(idx) {
   if (!isPlaying) return;
   // 唸到畫面外（被上方播放器或下方按鈕擋住）才捲動，避免一直跳
   const r = el.getBoundingClientRect();
-  if (r.top < 200 || r.bottom > window.innerHeight - 100) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const topLimit = (document.getElementById('rdPlayer')?.getBoundingClientRect().bottom || 0) + 8;
+  if (r.top < topLimit || r.bottom > window.innerHeight - 100) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function updatePlayerUI() {
@@ -1348,9 +1628,10 @@ function updatePlayerUI() {
   btn.textContent = isPlaying ? '⏸ 暫停' : (playIdx > 0 ? '▶ 繼續' : '▶ 播放');
   const st = document.getElementById('plStatus');
   const total = playlist.length;
-  st.textContent = playIdx >= 0 && total
-    ? `第 ${playIdx + 1} / ${total} 句${isPlaying ? '' : '（已暫停）'}`
+  st.textContent = isPlaying && isLoading ? `⏳ 產生語音中…（第 ${playIdx + 1} / ${total} 句）`
+    : playIdx >= 0 && total ? `第 ${playIdx + 1} / ${total} 句${isPlaying ? '' : '（已暫停）'}`
     : `💡 點任一句，就從那句開始唸（共 ${total} 句）`;
+  updateMediaSession();
 }
 
 // ===== PROGRESS =====
