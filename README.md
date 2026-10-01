@@ -76,8 +76,8 @@ Homie 就是為這個場景專門打造的。
 | Gemini | 3.8 Flash（預設）| 日常作業，最新最準 | ~$0.002 |
 | Gemini | 3.7 Flash（備用）| 同價格，備用選項 | ~$0.002 |
 | Claude | Haiku 4.5 | 快速、最省 | ~$0.001 |
-| Claude | Sonnet 5 | 均衡推薦 | ~$0.004 |
-| Claude | Opus 5 | 最強 | ~$0.01 |
+| Claude | Sonnet 5.5 | 均衡推薦 | ~$0.004 |
+| Claude | Opus 5.5 | 最強 | ~$0.008 |
 | OpenAI | GPT-5.6 Luna | 均衡推薦 | ~$0.003 |
 | OpenAI | GPT-5.4 Nano | 最快、最省 | ~$0.0007 |
 | OpenAI | GPT-5.6 Sol | 最強 | ~$0.017 |

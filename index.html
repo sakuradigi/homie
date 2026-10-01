@@ -507,9 +507,9 @@ const PROVIDERS = {
     linkText: 'Claude API Key',
     desc: 'Anthropic Console 申請，資料僅傳送至 Anthropic',
     models: [
-      { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5（快速・最省）',  cost: '~$0.001 / 次' },
-      { value: 'claude-sonnet-5',           label: 'Claude Sonnet 5（推薦・均衡）',   cost: '~$0.004 / 次' },
-      { value: 'claude-opus-5',             label: 'Claude Opus 5（最強・較貴）',     cost: '~$0.01 / 次'  },
+      { value: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5（快速・最省）',  cost: '~$0.001 / 次' },
+      { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5（推薦・均衡）', cost: '~$0.004 / 次' },
+      { value: 'claude-opus-5-5',   label: 'Claude Opus 5.5（最強・較貴）',   cost: '~$0.008 / 次' },
     ]
   },
   openai: {
@@ -859,25 +859,39 @@ async function callClaude(prompt, images, key, onChunk) {
     content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.dataUrl.split(',')[1] } });
   }
   content.push({ type: 'text', text: prompt });
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify({ model: getSelectedModel(), max_tokens: 8192, stream: true, messages: [{ role: 'user', content }] })
-  });
+  const model = getSelectedModel();
+  const headers = {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+    'content-type': 'application/json'
+  };
+  // Sonnet 5.5／Opus 5.5 的思考（thinking）預設開啟且關不掉，思考 token 也算在 max_tokens 內，
+  // 上限開大避免答案被吃掉（只有實際產生的才計費）。
+  const body = { model, max_tokens: 32000, stream: true, messages: [{ role: 'user', content }] };
+  // 5.5 系列有安全分類器，偶爾會誤擋；開啟伺服器端備援：被擋時自動改用官方建議的模型重答
+  if (/-5-5$/.test(model)) {
+    headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
+    body.fallbacks = 'default';
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) throw await apiError(res, 'Claude');
   let full = '';
+  let refused = false;
   await readSSE(res, d => {
-    if (d.type === 'content_block_delta' && d.delta?.text) {
+    // 串流中途切到備援模型：前面那段是被擋下的半截答案，丟掉重來
+    if (d.type === 'content_block_start' && d.content_block?.type === 'fallback') {
+      full = '';
+      if (onChunk) onChunk(full);
+    }
+    if (d.type === 'content_block_delta' && d.delta?.text) {   // 思考內容是 thinking_delta，不會進來
       full += d.delta.text;
       if (onChunk) onChunk(full);
     }
     if (d.type === 'message_delta' && d.delta?.stop_reason === 'max_tokens') lastResponseTruncated = true;
+    if (d.type === 'message_delta' && d.delta?.stop_reason === 'refusal') refused = true;
   });
+  if (refused) throw new Error('Claude 的安全機制擋下了這次內容（偶爾會誤判）。請再試一次，或換用 Gemini／OpenAI。');
   return full;
 }
 

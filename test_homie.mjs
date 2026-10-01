@@ -197,6 +197,33 @@ win.switchProvider('claude', true);
 await T.callReal('p', [], null);
 check('Claude 仍使用 max_tokens', bodies[0].body.max_tokens > 0);
 check('Claude stop_reason=max_tokens 判定為截斷', T.truncated() === true);
+check('Claude 預設模型為 Haiku 4.5', bodies[0].body.model === 'claude-haiku-4-5');
+check('Haiku 不送備援參數', bodies[0].body.fallbacks === undefined);
+check('max_tokens 開到 32000（容納思考 token）', bodies[0].body.max_tokens === 32000);
+
+// Sonnet 5.5：開啟伺服器端備援；串流中途切換時丟掉半截答案
+const sseMulti = (payloads) => ({ ok: true, body: { getReader: () => { let done = false; return { read: async () =>
+  done ? { done: true } : (done = true, { done: false, value: new TextEncoder().encode(payloads.map(p => 'data: ' + JSON.stringify(p) + '\n\n').join('')) })
+}; } } });
+bodies.length = 0;
+let claudeHeaders = null;
+win.fetch = async (url, opt) => { bodies.push({ url, body: JSON.parse(opt.body) }); claudeHeaders = opt.headers;
+  return sseMulti([
+    { type: 'content_block_delta', delta: { type: 'text_delta', text: '半截' } },
+    { type: 'content_block_start', content_block: { type: 'fallback', from: { model: 'claude-sonnet-5-5' }, to: { model: 'claude-sonnet-5' } } },
+    { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: '想一想' } },
+    { type: 'content_block_delta', delta: { type: 'text_delta', text: '完整答案' } },
+    { type: 'message_delta', delta: { stop_reason: 'end_turn' } }
+  ]); };
+win.document.getElementById('modelSelect').value = 'claude-sonnet-5-5';
+const fbText = await T.callReal('p', [], null);
+check('5.5 系列開啟 fallbacks: default', bodies[0].body.fallbacks === 'default' && claudeHeaders['anthropic-beta'] === 'server-side-fallback-2026-07-01');
+check('切換到備援模型時丟掉半截答案、不含思考', fbText === '完整答案', JSON.stringify(fbText));
+
+win.fetch = async () => sseMulti([{ type: 'message_delta', delta: { stop_reason: 'refusal' } }]);
+let refusalErr = null;
+try { await T.callReal('p', [], null); } catch (e) { refusalErr = e.message; }
+check('拒答時顯示清楚的錯誤', !!refusalErr && refusalErr.includes('安全機制'), String(refusalErr));
 
 
 // ── 9. 繪本：切句 ────────────────────────────────────
