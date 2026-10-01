@@ -519,6 +519,90 @@ check('小老師用老師語氣', tReq.input[0].content[0].annotations[0].style.
 win.stopTTS();
 win.localStorage.setItem('homie_read_mode', 'plain');
 
+// ── 15. 中途取消 AI 請求 ─────────────────────────────
+win.localStorage.setItem('homie_tts_engine', 'browser');
+T.setImages(1);
+let gotSignal = null;
+T.stubCallAI((prompt, images, onChunk, signal) => { gotSignal = signal;
+  return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new win.DOMException('aborted', 'AbortError')))); });
+const hwRun = win.runHomework();
+const hwBtn = win.document.getElementById('hwBtn');
+check('分析中按鈕提示可取消', hwBtn.textContent.includes('再按一次取消') && !hwBtn.disabled);
+win.runHomework();   // 再按一次 = 取消
+await hwRun;
+check('取消會中止請求', gotSignal && gotSignal.aborted);
+check('取消後顯示「已取消」而不是錯誤', win.document.querySelector('#hwResults .notice-box')?.textContent.includes('已取消') && !win.document.querySelector('#hwResults .error-box'));
+check('取消後按鈕恢復', hwBtn.textContent.includes('重新解題'));
+T.stubCallAI(async () => '第一行');
+await win.runHomework();
+check('取消後可以正常再跑一次', !!win.document.querySelector('#hwResults .md-body'));
+
+T.setRdImages(1);
+T.stubCallAI((prompt, images, onChunk, signal) =>
+  new Promise((_, reject) => signal.addEventListener('abort', () => reject(new win.DOMException('aborted', 'AbortError')))));
+const rdRun = win.runReading();
+win.runReading();
+await rdRun;
+check('繪本辨識也能取消', win.document.querySelector('#rdResults .notice-box')?.textContent.includes('已取消'));
+
+// signal 有傳到 fetch
+let fetchSignal = null;
+win.fetch = async (url, opt) => { fetchSignal = opt.signal;
+  return sse('{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}]}'); };
+win.localStorage.setItem('homie_gemini_key', 'AIza-test');
+T.setProvider('gemini');
+win.switchProvider('gemini', true);
+const ac = new win.AbortController();
+await T.callReal('p', [], null, ac.signal);
+check('取消訊號有傳給 API 請求', fetchSignal === ac.signal);
+
+// ── 16. 有結果時底部大按鈕不再浮動 ─────────────────────
+check('CSS：有結果時 sticky 按鈕回到原位', /\.panel\.has-result \.sticky-action\s*\{[^}]*position:\s*static/.test(win.document.querySelector('style').textContent));
+win.renderReadingResult(BOOK, 'zh');
+check('繪本有結果時面板標記 has-result', win.document.getElementById('panel-reading').classList.contains('has-result'));
+win.resetPanel('rd');
+check('新繪本後取消標記', !win.document.getElementById('panel-reading').classList.contains('has-result'));
+
+// ── 17. 解題結果唸給孩子聽 ───────────────────────────
+const realParse = win.marked.parse;
+win.marked.parse = () => '<h2>需要訂正</h2><ul><li>第3題 → 正確答案是 <mark>8</mark>（不是 9）</li></ul>' +
+  '<h2>逐題說明</h2><ol><li><p>第1題 正確 🎉</p></li><li><p>第2題 ___ 填「大」</p></li></ol>';
+win.renderReadingResult(BOOK, 'zh');   // 先有一本繪本，等等測兩個播放器切換
+win.document.getElementById('hwResults').innerHTML = '';
+win.renderHomeworkResult('（內容由 stub 產生）', '', false);
+win.marked.parse = realParse;
+const hwSegs = win.document.querySelectorAll('#hwResults .hw-seg');
+check('解題結果每段都可點', hwSegs.length === 5, String(hwSegs.length));
+check('解題播放器出現、沒有陪讀切換', !!win.document.getElementById('hwPlayer') && !win.document.querySelector('#hwPlayer .mode-toggle'));
+check('解題播放器提示用「段」', win.document.querySelector('#hwPlayer [data-pl="plStatus"]').textContent.includes('共 5 段'));
+check('繪本播放器的 id 不受影響', win.document.getElementById('plPlay').closest('.player').id === 'rdPlayer');
+check('解題有結果時面板標記 has-result', win.document.getElementById('panel-homework').classList.contains('has-result'));
+
+spoken.length = 0;
+hwSegs[1].click();
+check('點解題段落開始唸', spoken[0] === '第3題，正確答案是 8（不是 9）', JSON.stringify(spoken));
+check('箭頭改成停頓、標記拿掉', !spoken[0].includes('→'));
+win.speechSynthesis.finish();   // → h2 逐題說明
+win.speechSynthesis.finish();   // → 第1題
+check('表情符號不唸', spoken[spoken.length - 1] === '第1題 正確', JSON.stringify(spoken));
+win.speechSynthesis.finish();
+check('填空底線不唸', spoken[spoken.length - 1] === '第2題 填「大」', JSON.stringify(spoken));
+check('解題段落高亮', hwSegs[4].classList.contains('active'));
+
+// 兩個播放器切換：點繪本的句子 → 解題停下、改唸繪本
+const rdSegs = win.document.querySelectorAll('#rdResults .para-segment');
+spoken.length = 0;
+rdSegs[1].click();
+await sleep(150);
+check('點繪本句子切換到繪本播放器', spoken[spoken.length - 1] === '他走進森林。' && T.state().len === 4, JSON.stringify(spoken));
+check('切換後解題高亮清掉', !win.document.querySelector('#hwResults .hw-seg.active'));
+check('繪本狀態列更新', win.document.getElementById('plStatus').textContent.includes('/ 4 句'));
+spoken.length = 0;
+hwSegs[0].click();
+await sleep(150);
+check('再點解題段落切回解題', spoken[spoken.length - 1] === '需要訂正' && T.state().len === 5, JSON.stringify(spoken));
+win.stopTTS();
+
 console.log(results.join('\n'));
 const pass = results.filter(r => r.startsWith('PASS')).length;
 console.log('\n' + pass + '/' + results.length + ' 通過');

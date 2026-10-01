@@ -189,6 +189,10 @@
   .md-body code { background: #F3F4F6; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
   .md-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   .md-body mark { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  /* 解題結果：每一段都能點來唸給孩子聽 */
+  .md-body .hw-seg { cursor: pointer; border-radius: 6px; transition: background 0.15s; }
+  .md-body .hw-seg:hover { background: #FFF7F3; }
+  .md-body .hw-seg.active { background: #FFE0D5; }
 
   /* Shoot-more bar */
   .shoot-more-bar { display: flex; align-items: center; gap: 10px; background: #EEF4FF; border: 1px solid #C7D9FF; border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; }
@@ -272,6 +276,8 @@
 
     /* Floating bottom action area so thumb can reach */
     .sticky-action { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg); padding: 12px 16px; border-top: 1px solid var(--border); z-index: 50; box-shadow: 0 -4px 12px rgba(0,0,0,0.06); }
+    /* 有結果時大按鈕不再浮在底部（回到原本位置），把畫面讓給結果和播放器 */
+    .panel.has-result .sticky-action { position: static; padding: 0; border-top: none; box-shadow: none; background: none; margin-bottom: 12px; }
   }
 
   /* Safe area for iPhone notch / home bar */
@@ -480,6 +486,11 @@ let currentReadLang = 'zh';
 let readMode = lsGet('homie_read_mode', 'plain');   // 'plain' 純朗讀｜'companion' 智慧陪讀
 let companionNotes = null;      // 目前這本書的陪讀內容：[{ after, type:'talk'|'ask', text }]
 let currentRdHistoryTs = null;  // 目前這本書對應的歷史紀錄，陪讀內容會存回去
+// 解題、繪本兩個分頁各有一個播放器，同一時間只有一個在播（activePrefix）；
+// 點到哪個分頁的結果，就把播放狀態切換過去（見 activatePlayer）
+let activePrefix = 'rd';
+const playerCtx = {};
+const aiAbort = { hw: null, rd: null };   // 進行中的 AI 請求，可中途取消
 
 // localStorage 在無痕模式等情況可能丟例外，偏好設定讀寫一律包起來
 function lsGet(k, d = '') { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
@@ -596,7 +607,7 @@ function saveApiKey() {
   if (!key) { alert('請先輸入 API Key'); return; }
   localStorage.setItem(PROVIDERS[currentProvider].storageKey, key);
   showApiSaved();
-  if (document.getElementById('ttsEngine')) { populateEngines(); populateVoices(currentReadLang); }
+  syncPlayerPrefs();
 }
 function showApiSaved() {
   document.getElementById('apiSaved').classList.add('show');
@@ -785,16 +796,17 @@ function updateCostBadge() {
 let lastResponseTruncated = false;
 
 // onChunk(累積全文)：每收到一段就回呼，用於即時渲染
-async function callAI(prompt, images, onChunk) {
+// signal：AbortController.signal，用來中途取消（串流讀到一半也能停）
+async function callAI(prompt, images, onChunk, signal) {
   lastResponseTruncated = false;
   const key = getCurrentKey();
   if (!key) {
     alert(`請先輸入並儲存 ${PROVIDERS[currentProvider].name} API Key！`);
     return null;
   }
-  if (currentProvider === 'gemini') return callGemini(prompt, images, key, onChunk);
-  if (currentProvider === 'claude') return callClaude(prompt, images, key, onChunk);
-  if (currentProvider === 'openai') return callOpenAI(prompt, images, key, onChunk);
+  if (currentProvider === 'gemini') return callGemini(prompt, images, key, onChunk, signal);
+  if (currentProvider === 'claude') return callClaude(prompt, images, key, onChunk, signal);
+  if (currentProvider === 'openai') return callOpenAI(prompt, images, key, onChunk, signal);
 }
 
 async function apiError(res, providerName) {
@@ -824,7 +836,7 @@ async function readSSE(res, onData) {
   }
 }
 
-async function callGemini(prompt, images, key, onChunk) {
+async function callGemini(prompt, images, key, onChunk, signal) {
   const parts = [{ text: prompt }];
   for (const img of images) {
     parts.push({ inline_data: { mime_type: img.mime, data: img.dataUrl.split(',')[1] } });
@@ -833,6 +845,7 @@ async function callGemini(prompt, images, key, onChunk) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   const res = await fetch(url, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     // Gemini 3.x 的思考（thinking）token 也算在 maxOutputTokens 內，上限開大避免答案被吃掉。
     // 只有實際產生的 token 才計費，開大不會多花錢。
@@ -853,7 +866,7 @@ async function callGemini(prompt, images, key, onChunk) {
   return full;
 }
 
-async function callClaude(prompt, images, key, onChunk) {
+async function callClaude(prompt, images, key, onChunk, signal) {
   const content = [];
   for (const img of images) {
     content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.dataUrl.split(',')[1] } });
@@ -874,7 +887,7 @@ async function callClaude(prompt, images, key, onChunk) {
     headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
     body.fallbacks = 'default';
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
+  const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal, headers, body: JSON.stringify(body) });
   if (!res.ok) throw await apiError(res, 'Claude');
   let full = '';
   let refused = false;
@@ -895,7 +908,7 @@ async function callClaude(prompt, images, key, onChunk) {
   return full;
 }
 
-async function callOpenAI(prompt, images, key, onChunk) {
+async function callOpenAI(prompt, images, key, onChunk, signal) {
   const content = [];
   for (const img of images) {
     content.push({ type: 'image_url', image_url: { url: img.dataUrl } });
@@ -909,6 +922,7 @@ async function callOpenAI(prompt, images, key, onChunk) {
   else body.max_completion_tokens = 16384;
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    signal,
     headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
@@ -924,14 +938,15 @@ async function callOpenAI(prompt, images, key, onChunk) {
 
 // ===== HOMEWORK =====
 async function runHomework() {
+  if (aiAbort.hw) { aiAbort.hw.abort(); return; }   // 分析中再按一次＝取消
   if (hwImages.length === 0) {
     alert('請先上傳作業照片！');
     return;
   }
   const btn = document.getElementById('hwBtn');
   const resultsEl = document.getElementById('hwResults');
-  btn.disabled = true;
-  btn.innerHTML = `<div class="spinner"></div> <span>分析中...</span>`;
+  const ctrl = aiAbort.hw = new AbortController();
+  btn.innerHTML = `<div class="spinner"></div> <span>分析中…（再按一次取消）</span>`;
   showProgress('hw');
   resultsEl.innerHTML = '';
 
@@ -961,7 +976,7 @@ ${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下�
     const live = document.getElementById('hwLive');
     const text = await callAI(prompt, hwImages, partial => {
       live.innerHTML = DOMPurify.sanitize(marked.parse(partial));
-    });
+    }, ctrl.signal);
     setProgress('hw', 100);
     if (text === null) { resultsEl.innerHTML = ''; return; } // 未設定 API Key，已 alert
     if (!text) throw new Error(lastResponseTruncated
@@ -972,9 +987,11 @@ ${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下�
     saveHistory('hw', text, null, userHint);
     loadHistoryUI('hw');
   } catch (e) {
-    resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
+    resultsEl.innerHTML = e.name === 'AbortError'
+      ? `<div class="notice-box">⏹ 已取消。照片都還在，可以調整後重新開始。</div>`
+      : `<div class="error-box">❌ ${e.message}</div>`;
   } finally {
-    btn.disabled = false;
+    aiAbort.hw = null;
     btn.innerHTML = `<span>🔍</span> <span>重新解題</span>`;
     hideProgress('hw');
   }
@@ -1006,6 +1023,20 @@ function renderHomeworkResult(text, usedHint, truncated) {
     card.appendChild(notice);
   }
   resultsEl.appendChild(card);
+
+  // 唸給孩子聽：每個段落／條列一段，點哪段就從哪段唸
+  activatePlayer('hw');
+  stopTTS();
+  currentReadLang = 'zh';
+  companionNotes = null;
+  currentSegments = collectSpeakBlocks(body);
+  if (currentSegments.length) {
+    resultsEl.prepend(buildPlayer('hw'));
+    syncPlayerPrefs();
+  }
+  buildPlaylist();
+  document.getElementById('panel-homework').classList.add('has-result');
+
   // New question button
   const btn = document.createElement('button');
   btn.className = 'new-q-btn';
@@ -1014,8 +1045,30 @@ function renderHomeworkResult(text, usedHint, truncated) {
   resultsEl.appendChild(btn);
 }
 
+// 從渲染好的 markdown 取出要唸的段落：只取最內層的區塊（<li><p> 只唸 <p>），避免重複唸
+function collectSpeakBlocks(root) {
+  const SEL = 'h1,h2,h3,h4,p,li,blockquote';
+  const segs = [];
+  [...root.querySelectorAll(SEL)].filter(el => !el.querySelector(SEL)).forEach(el => {
+    const text = speakableText(el.textContent);
+    if (!text) return;
+    const i = segs.length;
+    el.classList.add('hw-seg');
+    el.onclick = () => playFrom(playlist.findIndex(it => it.kind === 'read' && it.seg === i));
+    segs.push({ text, el });
+  });
+  return segs;
+}
+
+// 唸出來之前清掉不該唸的符號：箭頭改成停頓、表情符號和 markdown 記號拿掉、填空底線拿掉
+function speakableText(t) {
+  return t.replace(/[→⇒➜➡]/g, '，').replace(/\p{Extended_Pictographic}|\uFE0F/gu, '')
+    .replace(/[*#`_|]/g, '').replace(/\s+/g, ' ').replace(/\s*，\s*/g, '，').trim();
+}
+
 // ===== READING =====
 async function runReading() {
+  if (aiAbort.rd) { aiAbort.rd.abort(); return; }   // 辨識中再按一次＝取消
   if (rdImages.length === 0) {
     alert('請先上傳繪本照片！');
     return;
@@ -1023,8 +1076,8 @@ async function runReading() {
   const readLang = document.querySelector('[data-group="rdLang"].selected')?.dataset.val || 'zh';
   const btn = document.getElementById('rdBtn');
   const resultsEl = document.getElementById('rdResults');
-  btn.disabled = true;
-  btn.innerHTML = `<div class="spinner"></div> <span>辨識中...</span>`;
+  const ctrl = aiAbort.rd = new AbortController();
+  btn.innerHTML = `<div class="spinner"></div> <span>辨識中…（再按一次取消）</span>`;
   showProgress('rd');
   resultsEl.innerHTML = '';
   stopTTS();
@@ -1046,7 +1099,7 @@ ${langInstr}。
     const live = document.getElementById('rdLive');
     const text = await callAI(prompt, rdImages, partial => {
       live.textContent = partial;
-    });
+    }, ctrl.signal);
     setProgress('rd', 100);
     if (text === null) { resultsEl.innerHTML = ''; return; } // 未設定 API Key，已 alert
     if (!text) throw new Error('回應為空');
@@ -1055,9 +1108,11 @@ ${langInstr}。
     currentRdHistoryTs = saveHistory('rd', text, readLang);
     loadHistoryUI('rd');
   } catch (e) {
-    resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
+    resultsEl.innerHTML = e.name === 'AbortError'
+      ? `<div class="notice-box">⏹ 已取消。照片都還在，可以調整後重新開始。</div>`
+      : `<div class="error-box">❌ ${e.message}</div>`;
   } finally {
-    btn.disabled = false;
+    aiAbort.rd = null;
     btn.innerHTML = `<span>🔊</span> <span>重新擷取</span>`;
     hideProgress('rd');
   }
@@ -1091,6 +1146,7 @@ function splitSentences(text) {
 
 // companion：歷史紀錄裡存的陪讀內容（有的話直接用，不必重新產生）
 function renderReadingResult(text, readLang, companion) {
+  activatePlayer('rd');
   stopTTS();
   companionNotes = null;
   const resultsEl = document.getElementById('rdResults');
@@ -1149,13 +1205,12 @@ function renderReadingResult(text, readLang, companion) {
     companionNotes = companion.notes;
   }
 
-  resultsEl.prepend(buildPlayer());
-  document.getElementById('ttsSpeed').value = lsGet('homie_tts_rate', '1');
-  document.getElementById('cpGrade').value = companion?.grade || lsGet('homie_cp_grade', 'low');
-  document.getElementById('cpDensity').value = companion?.density || lsGet('homie_cp_density', 'mid');
-  populateEngines();
-  populateVoices(readLang);
+  resultsEl.prepend(buildPlayer('rd'));
+  plEl('cpGrade').value = companion?.grade || lsGet('homie_cp_grade', 'low');
+  plEl('cpDensity').value = companion?.density || lsGet('homie_cp_density', 'mid');
+  syncPlayerPrefs();
   buildPlaylist();
+  document.getElementById('panel-reading').classList.add('has-result');
   if (readMode === 'companion' && !companionNotes) showPlayerNotice(COMPANION_HINT);
 
   // New question button
@@ -1166,61 +1221,99 @@ function renderReadingResult(text, readLang, companion) {
   resultsEl.appendChild(newQBtn);
 }
 
-function buildPlayer() {
+// prefix：'rd' 繪本（含純朗讀／智慧陪讀切換）、'hw' 解題結果。
+// 元素用 data-pl 標記，函式一律透過 plEl() 在「目前作用中的播放器」裡找；繪本播放器另外保留 id
+function buildPlayer(prefix) {
+  const a = (name) => `data-pl="${name}"` + (prefix === 'rd' ? ` id="${name}"` : '');
   const el = document.createElement('div');
   // 聲音設定列可收合（手機畫面小，收起來能多看幾行字）；收合狀態會記住
   el.className = 'player' + (lsGet('homie_player_opts') === 'closed' ? ' collapsed' : '');
-  el.id = 'rdPlayer';
+  el.id = prefix + 'Player';
   el.innerHTML = `
-    <div class="mode-toggle">
+    ${prefix === 'rd' ? `<div class="mode-toggle">
       <button class="mode-btn" data-mode="plain" onclick="setReadMode('plain')">📖 純朗讀</button>
       <button class="mode-btn" data-mode="companion" onclick="setReadMode('companion')">🧑‍🏫 智慧陪讀</button>
-    </div>
+    </div>` : ''}
     <div class="player-main">
-      <button class="pl-btn" onclick="skipItem(-1)" title="上一句" aria-label="上一句">⏮</button>
-      <button class="pl-btn play" id="plPlay" onclick="togglePlay()">▶ 播放</button>
-      <button class="pl-btn" onclick="skipItem(1)" title="下一句" aria-label="下一句">⏭</button>
+      <button class="pl-btn" onclick="skipItem(-1)" title="上一${unitOf(prefix)}" aria-label="上一${unitOf(prefix)}">⏮</button>
+      <button class="pl-btn play" ${a('plPlay')} onclick="togglePlay()">▶ 播放</button>
+      <button class="pl-btn" onclick="skipItem(1)" title="下一${unitOf(prefix)}" aria-label="下一${unitOf(prefix)}">⏭</button>
       <button class="pl-btn" onclick="playFrom(0)" title="從頭開始" aria-label="從頭開始">↺</button>
       <button class="pl-btn" onclick="togglePlayerOpts()" title="聲音設定" aria-label="聲音設定">⚙</button>
-      <span class="pl-status" id="plStatus"></span>
+      <span class="pl-status" ${a('plStatus')}></span>
     </div>
     <div class="player-opts">
-      <select class="voice-select" id="ttsEngine" onchange="onEngineChange()" aria-label="語音引擎"></select>
-      <select class="speed-select" id="ttsSpeed" onchange="onSpeedChange()" aria-label="語速">
+      <select class="voice-select" ${a('ttsEngine')} onchange="onEngineChange()" aria-label="語音引擎"></select>
+      <select class="speed-select" ${a('ttsSpeed')} onchange="onSpeedChange()" aria-label="語速">
         <option value="0.7">慢 0.7x</option>
         <option value="0.85">0.85x</option>
         <option value="1">正常 1x</option>
         <option value="1.2">1.2x</option>
         <option value="1.5">快 1.5x</option>
       </select>
-      <select class="voice-select" id="ttsVoice" onchange="onVoiceChange()" aria-label="語音"></select>
+      <select class="voice-select" ${a('ttsVoice')} onchange="onVoiceChange()" aria-label="語音"></select>
     </div>
-    <div class="companion-opts">
-      <select class="speed-select" id="cpGrade" onchange="lsSet('homie_cp_grade', this.value)" aria-label="孩子年級">
+    ${prefix === 'rd' ? `<div class="companion-opts">
+      <select class="speed-select" ${a('cpGrade')} onchange="lsSet('homie_cp_grade', this.value)" aria-label="孩子年級">
         <option value="k">幼兒園</option>
         <option value="low">國小低年級</option>
         <option value="mid">國小中年級</option>
         <option value="high">國小高年級</option>
       </select>
-      <select class="speed-select" id="cpDensity" onchange="lsSet('homie_cp_density', this.value)" aria-label="講解多寡">
+      <select class="speed-select" ${a('cpDensity')} onchange="lsSet('homie_cp_density', this.value)" aria-label="講解多寡">
         <option value="few">講解少一點</option>
         <option value="mid">講解適中</option>
         <option value="many">講解多一點</option>
       </select>
-      <button class="pl-btn cp-gen" id="cpGenBtn" onclick="generateCompanion()">✨ 產生陪讀內容</button>
-    </div>
-    <div class="pl-notice" id="plNotice" style="display:none"></div>`;
+      <button class="pl-btn cp-gen" ${a('cpGenBtn')} onclick="generateCompanion()">✨ 產生陪讀內容</button>
+    </div>` : ''}
+    <div class="pl-notice" ${a('plNotice')} style="display:none"></div>`;
   return el;
 }
 
+function unitOf(prefix) { return prefix === 'hw' ? '段' : '句'; }
+function activeRoot() { return document.getElementById(activePrefix + 'Player'); }
+function plEl(name) { return activeRoot()?.querySelector(`[data-pl="${name}"]`) || null; }
+
+// 語速、語音引擎、語音是兩個播放器共用的偏好，切換播放器或存了新 Key 時重新套用
+function syncPlayerPrefs() {
+  const sp = plEl('ttsSpeed');
+  if (!sp) return;
+  sp.value = lsGet('homie_tts_rate', '1');
+  populateEngines();
+  populateVoices(currentReadLang);
+}
+
+// 切換作用中的播放器：先停掉目前在唸的，把狀態收起來，再換上另一個分頁的
+function activatePlayer(prefix) {
+  if (prefix === activePrefix) return;
+  stopTTS();
+  playerCtx[activePrefix] = { currentSegments, currentReadLang, playlist, companionNotes };
+  const c = playerCtx[prefix] || { currentSegments: [], currentReadLang: 'zh', playlist: [], companionNotes: null };
+  currentSegments = c.currentSegments;
+  currentReadLang = c.currentReadLang;
+  playlist = c.playlist;
+  companionNotes = c.companionNotes;
+  activePrefix = prefix;
+  syncPlayerPrefs();
+  updatePlayerUI();
+}
+
+// 點到哪個分頁的結果區（句子、段落、播放器按鈕），就先切換到那個播放器；
+// 用捕獲階段，讓切換早於元素本身的 onclick
+['hw', 'rd'].forEach(prefix => {
+  const box = document.getElementById(prefix + 'Results');
+  ['click', 'change'].forEach(type => box.addEventListener(type, () => activatePlayer(prefix), true));
+});
+
 function togglePlayerOpts() {
-  const el = document.getElementById('rdPlayer');
+  const el = activeRoot();
   el.classList.toggle('collapsed');
   lsSet('homie_player_opts', el.classList.contains('collapsed') ? 'closed' : 'open');
 }
 
 function getRate() {
-  return parseFloat(document.getElementById('ttsSpeed')?.value || lsGet('homie_tts_rate', '1')) || 1;
+  return parseFloat(plEl('ttsSpeed')?.value || lsGet('homie_tts_rate', '1')) || 1;
 }
 
 function onSpeedChange() {
@@ -1231,12 +1324,12 @@ function onSpeedChange() {
 // 手機內建語音依語言記（中文、英文各一個）；AI 語音依引擎記
 function onVoiceChange() {
   const engine = activeEngine();
-  lsSet('homie_voice_' + (engine === 'browser' ? currentReadLang : engine), document.getElementById('ttsVoice').value);
+  lsSet('homie_voice_' + (engine === 'browser' ? currentReadLang : engine), plEl('ttsVoice').value);
   if (isPlaying) playFrom(playIdx);   // 換聲音立刻從這句重唸，馬上聽得出差別
 }
 
 function showPlayerNotice(msg) {
-  const el = document.getElementById('plNotice');
+  const el = plEl('plNotice');
   if (!el) return;
   el.textContent = msg;
   el.style.display = msg ? 'block' : 'none';
@@ -1284,7 +1377,7 @@ function pickBrowserVoice(lang) {
 function populateVoices(readLang) {
   const engine = activeEngine();
   if (engine === 'browser') return populateBrowserVoices(readLang);
-  const sel = document.getElementById('ttsVoice');
+  const sel = plEl('ttsVoice');
   if (!sel) return;
   const cfg = TTS_ENGINES[engine];
   sel.innerHTML = '';
@@ -1293,7 +1386,7 @@ function populateVoices(readLang) {
 }
 
 function populateBrowserVoices(readLang) {
-  const sel = document.getElementById('ttsVoice');
+  const sel = plEl('ttsVoice');
   if (!sel) return;
   const list = voicesFor(readLang);
   const saved = lsGet('homie_voice_' + readLang);
@@ -1353,7 +1446,7 @@ function makeBubble(n) {
 }
 
 function updateModeUI() {
-  const pl = document.getElementById('rdPlayer');
+  const pl = activeRoot();
   if (!pl) return;
   pl.classList.toggle('mode-companion', readMode === 'companion');
   pl.classList.toggle('has-notes', !!companionNotes);
@@ -1361,7 +1454,7 @@ function updateModeUI() {
     b.classList.toggle('on', b.dataset.mode === readMode);
     b.setAttribute('aria-pressed', String(b.dataset.mode === readMode));
   });
-  const btn = document.getElementById('cpGenBtn');
+  const btn = plEl('cpGenBtn');
   if (btn && !btn.disabled) btn.textContent = companionNotes ? '↻ 重新產生' : '✨ 產生陪讀內容';
 }
 
@@ -1430,9 +1523,9 @@ function parseCompanion(text, n) {
 
 async function generateCompanion() {
   if (!currentSegments.length) return;
-  const btn = document.getElementById('cpGenBtn');
-  const grade = document.getElementById('cpGrade').value;
-  const density = document.getElementById('cpDensity').value;
+  const btn = plEl('cpGenBtn');
+  const grade = plEl('cpGrade').value;
+  const density = plEl('cpDensity').value;
   const book = currentSegments;   // 等待期間若換了一本書，結果就丟掉
   pausePlayback();
   btn.disabled = true;
@@ -1473,7 +1566,7 @@ function playFrom(idx) {
   if (activeEngine() !== 'browser') unlockAudio();
   waitingAnswer = false;
   // 手機上開始播放就先收起設定列（不記住），讓出畫面看故事；按 ⚙ 隨時可再展開
-  if (window.innerWidth <= 600) document.getElementById('rdPlayer')?.classList.add('collapsed');
+  if (window.innerWidth <= 600) activeRoot()?.classList.add('collapsed');
   playIdx = Math.min(idx, playlist.length - 1);
   isPlaying = true;
   speakCurrent(++playSession);
@@ -1621,7 +1714,7 @@ function engineKey(engine) {
 }
 
 function populateEngines() {
-  const sel = document.getElementById('ttsEngine');
+  const sel = plEl('ttsEngine');
   if (!sel) return;
   sel.innerHTML = '';
   Object.entries(TTS_ENGINES).forEach(([id, cfg]) => {
@@ -1637,12 +1730,12 @@ function populateEngines() {
 
 // 實際使用的引擎（Key 被刪掉就自動退回手機內建）
 function activeEngine() {
-  const v = document.getElementById('ttsEngine')?.value || 'browser';
+  const v = plEl('ttsEngine')?.value || 'browser';
   return v === 'browser' || engineKey(v) ? v : 'browser';
 }
 
 function onEngineChange() {
-  const engine = document.getElementById('ttsEngine').value;
+  const engine = plEl('ttsEngine').value;
   lsSet('homie_tts_engine', engine);
   showPlayerNotice(TTS_ENGINES[engine].note || '');
   populateVoices(currentReadLang);
@@ -1659,7 +1752,7 @@ function cloudVoice(engine, role) {
 
 // 語氣指示（兩家都是用自然語言描述想要的唸法，不會被唸出來）
 function cloudStyle(role) {
-  if (role === 'teacher') return '像親切的台灣國小老師在跟小朋友說話：溫柔、有耐心、帶點笑意，語速稍慢。使用台灣國語口音（Taiwanese Mandarin accent）。';
+  if (role === 'teacher' || activePrefix === 'hw') return '像親切的台灣國小老師在跟小朋友說話：溫柔、有耐心、帶點笑意，語速稍慢。使用台灣國語口音（Taiwanese Mandarin accent）。';
   if (currentReadLang === 'en') return 'Warm, clear, gentle storytelling voice, slightly slow, like reading a picture book aloud to a young child.';
   return '用溫暖、清楚、速度稍慢的語氣，像在唸繪本給小朋友聽，角色對話可以帶一點感情。使用台灣國語口音（Taiwanese Mandarin accent）。';
 }
@@ -1669,7 +1762,7 @@ function roleOf(item) { return item.kind === 'read' ? 'read' : 'teacher'; }
 function getCloudAudio(engine, item) {
   const role = roleOf(item);
   const voice = cloudVoice(engine, role);
-  const k = [engine, voice, role, currentReadLang, item.text].join('|');
+  const k = [engine, voice, role, activePrefix, currentReadLang, item.text].join('|');
   if (!ttsCache.has(k)) {
     const p = synthCloud(engine, item.text, voice, cloudStyle(role)).then(blob => URL.createObjectURL(blob));
     p.catch(() => ttsCache.delete(k));   // 失敗不留快取，下次可以重試
@@ -1800,7 +1893,7 @@ async function speakCloud(engine, item, session, done) {
 // AI 語音失敗（Key 錯、額度用完、網路斷）：這次先改用手機內建語音接著唸，不讓孩子卡住
 function cloudFailed(e, item, session, done) {
   isLoading = false;
-  const sel = document.getElementById('ttsEngine');
+  const sel = plEl('ttsEngine');
   if (sel) sel.value = 'browser';   // 只改畫面不存設定，下次打開仍會先試 AI 語音
   populateVoices(currentReadLang);
   showPlayerNotice(`AI 語音暫時無法使用（${e.message || e}），先改用手機內建語音。可在選單切回 AI 語音再試。`);
@@ -1814,7 +1907,7 @@ function updateMediaSession() {
     const cur = playlist[playIdx];
     navigator.mediaSession.metadata = new MediaMetadata({
       title: cur ? cur.text.slice(0, 40) : '繪本朗讀',
-      artist: 'Homie 繪本朗讀',
+      artist: activePrefix === 'hw' ? 'Homie 解題說明' : 'Homie 繪本朗讀',
       artwork: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }]
     });
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
@@ -1829,30 +1922,32 @@ function updateMediaSession() {
 }
 
 function highlightItem(idx) {
-  document.querySelectorAll('.para-segment.active, .teacher-bubble.active').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.para-segment.active, .teacher-bubble.active, .hw-seg.active').forEach(el => el.classList.remove('active'));
   const el = playlist[idx]?.el;
   if (!el) return;
   el.classList.add('active');
   if (!isPlaying) return;
   // 唸到畫面外（被上方播放器或下方按鈕擋住）才捲動，避免一直跳
   const r = el.getBoundingClientRect();
-  const topLimit = (document.getElementById('rdPlayer')?.getBoundingClientRect().bottom || 0) + 8;
+  const topLimit = (activeRoot()?.getBoundingClientRect().bottom || 0) + 8;
   if (r.top < topLimit || r.bottom > window.innerHeight - 100) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function updatePlayerUI() {
-  const btn = document.getElementById('plPlay');
+  const btn = plEl('plPlay');
   if (!btn) return;
   btn.textContent = isPlaying ? '⏸ 暫停' : (playIdx > 0 ? '▶ 繼續' : '▶ 播放');
-  const st = document.getElementById('plStatus');
+  const st = plEl('plStatus');
   // 句數只算原文；小老師的話不計入
   const total = currentSegments.length;
+  const unit = unitOf(activePrefix);
   const cur = playlist[playIdx];
   const pos = Math.max(1, playlist.slice(0, playIdx + 1).filter(it => it.kind === 'read').length);
   st.textContent = waitingAnswer && !isPlaying ? '🙋 換小朋友回答囉！說完再按 ▶ 繼續'
     : isPlaying && isLoading ? '⏳ 產生語音中…'
     : isPlaying && cur && cur.kind !== 'read' ? '🧑‍🏫 小老師說話中…'
-    : playIdx >= 0 && total ? `第 ${pos} / ${total} 句${isPlaying ? '' : '（已暫停）'}`
+    : playIdx >= 0 && total ? `第 ${pos} / ${total} ${unit}${isPlaying ? '' : '（已暫停）'}`
+    : activePrefix === 'hw' ? `💡 點任一段，就從那段開始唸給孩子聽（共 ${total} 段）`
     : `💡 點任一句，就從那句開始唸（共 ${total} 句）`;
   updateMediaSession();
 }
@@ -1867,6 +1962,7 @@ function resetPanel(prefix) {
   clearImages(prefix);
   stopTTS();
   document.getElementById(prefix + 'Results').innerHTML = '';
+  document.getElementById(prefix === 'hw' ? 'panel-homework' : 'panel-reading').classList.remove('has-result');
   // 「新題目」= 全新一份作業，順手清掉上一份的補充提示，避免它悄悄套用到下一份
   if (prefix === 'hw') clearHint();
   window.scrollTo({ top: 0, behavior: 'smooth' });
