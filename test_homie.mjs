@@ -66,7 +66,10 @@ window.__T = {
   rdImages: () => rdImages,
   audio: () => ttsAudio,
   cacheSize: () => ttsCache.size,
-  setRetry: (ms) => { TTS_RETRY_MS = ms; }
+  setRetry: (ms) => { TTS_RETRY_MS = ms; },
+  setRdImages: (n) => { rdImages = Array.from({length:n}, () => ({ mime:'image/jpeg', dataUrl:'data:image/jpeg;base64,AAA' })); },
+  notes: () => companionNotes,
+  utter: () => currentUtterance
 };`);
 
 const T = win.__T;
@@ -375,6 +378,119 @@ win.playFrom(0);
 await sleep(30);
 check('英文繪本用英文說故事語氣', oa.body.instructions.startsWith('Warm'));
 win.stopTTS();
+
+// ── 14. 智慧陪讀 ─────────────────────────────────────
+win.localStorage.clear();
+const BOOK2 = '===第1頁===\n小熊說：「我好餓。」他走進森林。\n森林裡好安靜喔。小鳥都睡著了。';
+const NOTES_REPLY = '好的，以下是陪讀內容：\n```json\n[{"after":-1,"type":"talk","text":"今天我們來讀小熊的故事。"},' +
+  '{"after":1,"type":"ask","text":"你猜小熊會找到什麼？"},{"after":99,"type":"talk","text":"故事結束囉。"},' +
+  '{"after":"x","type":"talk","text":"壞資料"},{"after":2,"type":"talk","text":"<img src=x onerror=alert(1)>"}]\n```';
+// 用 runReading 走完整流程，才會建立歷史紀錄
+T.setRdImages(1);
+let aiCalls = [];
+T.stubCallAI(async (prompt, images) => { aiCalls.push({ prompt, images }); return BOOK2; });
+await win.runReading();
+check('純朗讀模式只有原文', T.state().kinds.every(k => k === 'read') && T.state().len === 4);
+win.setReadMode('companion');
+check('切到陪讀但還沒產生：提示按鈕', win.document.getElementById('plNotice').textContent.includes('產生陪讀內容'));
+check('陪讀設定列顯示', win.document.getElementById('rdPlayer').classList.contains('mode-companion'));
+check('預設年級為國小低年級', win.document.getElementById('cpGrade').value === 'low');
+
+aiCalls = [];
+T.stubCallAI(async (prompt, images) => { aiCalls.push({ prompt, images }); return NOTES_REPLY; });
+await win.generateCompanion();
+const cp = aiCalls[0];
+check('陪讀只送文字、不重送照片', cp.images.length === 0);
+check('prompt 帶編號句子', cp.prompt.includes('[0] 小熊說：「我好餓。」') && cp.prompt.includes('[3] 小鳥都睡著了。'));
+check('prompt 帶年級', cp.prompt.includes('國小低年級'));
+check('中文繪本 prompt 不含英文單字說明', !cp.prompt.includes('brave'));
+check('解析容忍 ```json 圍欄與說明文字、濾掉壞資料', T.notes().length === 4, JSON.stringify(T.notes()));
+check('超出範圍的句號夾回最後一句', T.notes().some(n => n.after === 3 && n.text === '故事結束囉。'));
+const kinds = T.state().kinds.join(',');
+check('播放順序：開場→原文→提問→原文…', kinds === 'talk,read,read,ask,read,talk,read,talk', kinds);
+const bubbles = win.document.querySelectorAll('#rdResults .teacher-bubble');
+check('畫面上出現小老師泡泡', bubbles.length === 4);
+check('開場泡泡在第一段之前', win.document.querySelector('#rdResults .result-content').firstElementChild.classList.contains('teacher-bubble'));
+check('提問泡泡用不同樣式', win.document.querySelectorAll('#rdResults .teacher-bubble.ask').length === 1);
+check('AI 文字不會注入 HTML', !win.document.querySelector('#rdResults .teacher-bubble img'));
+check('按鈕變成「重新產生」', win.document.getElementById('cpGenBtn').textContent.includes('重新產生'));
+
+// 播放：小老師講話 → 原文 → … → 提問後停下等回答
+spoken.length = 0;
+win.playFrom(0);
+check('從開場白開始', spoken[0] === '今天我們來讀小熊的故事。');
+check('小老師音調稍高（內建語音）', T.utter().pitch > 1);
+check('狀態顯示小老師說話中', win.document.getElementById('plStatus').textContent.includes('小老師'));
+win.speechSynthesis.finish();
+check('接著唸原文', spoken[1] === '小熊說：「我好餓。」' && T.utter().pitch === undefined);
+win.speechSynthesis.finish();   // → 第 2 句
+win.speechSynthesis.finish();   // → 提問
+check('唸到提問', spoken[spoken.length - 1] === '你猜小熊會找到什麼？');
+win.speechSynthesis.finish();   // 提問唸完
+await sleep(120);
+check('提問後自動停下等孩子回答', !T.state().isPlaying && spoken.length === 4, JSON.stringify(spoken));
+check('狀態提示換小朋友回答', win.document.getElementById('plStatus').textContent.includes('換小朋友回答'));
+check('提問泡泡維持高亮', win.document.querySelector('#rdResults .teacher-bubble.ask').classList.contains('active'));
+win.togglePlay();
+check('按繼續接著唸下一句原文', spoken[spoken.length - 1] === '森林裡好安靜喔。');
+check('句數只算原文', win.document.getElementById('plStatus').textContent.includes('/ 4 句'));
+win.pausePlayback(); await sleep(50);
+
+// 切回純朗讀：泡泡消失、位置保留在同一句原文
+win.setReadMode('plain');
+check('切回純朗讀泡泡消失', win.document.querySelectorAll('#rdResults .teacher-bubble').length === 0);
+check('切換模式保留目前句子', T.state().playIdx === 2, String(T.state().playIdx));
+win.setReadMode('companion');
+check('再切回陪讀不必重新產生', win.document.querySelectorAll('#rdResults .teacher-bubble').length === 4 && aiCalls.length === 1);
+
+// 存進歷史，還原時直接帶出陪讀內容
+const rdHist = JSON.parse(win.localStorage.getItem('homie_rd_history'))[0];
+check('陪讀內容存進歷史紀錄', rdHist.companion && rdHist.companion.notes.length === 4 && rdHist.companion.count === 4);
+win.loadHistoryUI('rd');
+check('歷史列表標示有陪讀', win.document.querySelector('#rdHistoryList .h-meta').textContent.includes('有陪讀'));
+win.document.getElementById('rdResults').innerHTML = '';
+win.restoreHistory('rd', rdHist);
+check('還原歷史直接有陪讀泡泡、不再呼叫 AI', win.document.querySelectorAll('#rdResults .teacher-bubble').length === 4 && aiCalls.length === 1);
+// 句數對不上（例如切句規則改過）就不套用舊陪讀內容
+win.restoreHistory('rd', { ...rdHist, companion: { ...rdHist.companion, count: 99 } });
+check('句數對不上時不套用舊陪讀內容', win.document.querySelectorAll('#rdResults .teacher-bubble').length === 0);
+
+// 格式錯誤
+T.stubCallAI(async () => '抱歉，我無法完成');
+await win.generateCompanion();
+check('回覆格式錯誤時顯示提示', win.document.getElementById('plNotice').textContent.includes('格式不對'));
+
+// 英文繪本：小老師用中文、帶英文單字
+win.renderReadingResult('===Page 1===\nThe bear was brave. He walked into the woods.', 'en');
+aiCalls = [];
+T.stubCallAI(async (prompt, images) => { aiCalls.push({ prompt }); return '[{"after":0,"type":"talk","text":"brave 就是勇敢的意思。"}]'; });
+await win.generateCompanion();
+check('英文繪本 prompt 要求中文解釋英文單字', aiCalls[0].prompt.includes('英文繪本') && aiCalls[0].prompt.includes('brave 就是勇敢'));
+spoken.length = 0;
+win.playFrom(0);
+check('英文原文用英文語音', T.utter().lang === 'en-US');
+win.speechSynthesis.finish();
+check('小老師講解用中文語音', T.utter().lang === 'zh-TW' && spoken[1] === 'brave 就是勇敢的意思。');
+win.stopTTS(); await sleep(20);
+
+// AI 語音：小老師換一個聲音與語氣
+win.localStorage.setItem('homie_gemini_key', 'AIza-test');
+win.localStorage.setItem('homie_tts_engine', 'gemini');
+win.renderReadingResult('===第1頁===\n兔子跳過小河了。牠回頭看看大家。', 'zh');
+win.setReadMode('companion');
+T.stubCallAI(async () => '[{"after":-1,"type":"talk","text":"小老師開場囉。"}]');
+await win.generateCompanion();
+const tc = [];
+win.fetch = async (url, opt) => { tc.push(JSON.parse(opt.body));
+  return { ok: true, status: 200, json: async () => ({ steps: [{ type: 'model_output', content: [{ type: 'audio', data: pcmB64 }] }] }) }; };
+win.playFrom(0);
+await sleep(30);
+const tReq = tc.find(b => b.input[0].content[0].text === '小老師開場囉。');
+const nReq = tc.find(b => b.input[0].content[0].text === '兔子跳過小河了。');
+check('小老師用不同音色', tReq.generation_config.speech_config[0].voice === 'Achird' && nReq.generation_config.speech_config[0].voice === 'Sulafat');
+check('小老師用老師語氣', tReq.input[0].content[0].annotations[0].style.includes('國小老師'));
+win.stopTTS();
+win.localStorage.setItem('homie_read_mode', 'plain');
 
 console.log(results.join('\n'));
 const pass = results.filter(r => r.startsWith('PASS')).length;

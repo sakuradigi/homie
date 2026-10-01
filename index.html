@@ -151,6 +151,15 @@
   .pl-status { font-size: 12px; color: var(--muted); margin-left: 4px; flex: 1; min-width: 120px; }
   .player-opts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
   .player.collapsed .player-opts { display: none; }
+  /* 朗讀模式切換：純朗讀／智慧陪讀 */
+  .mode-toggle { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 3px; margin-bottom: 8px; }
+  .mode-btn { flex: 1; border: none; background: none; border-radius: 8px; padding: 8px 6px; font-size: 14px; font-family: inherit; color: var(--muted); cursor: pointer; }
+  .mode-btn.on { background: var(--card); color: var(--accent); font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .companion-opts { display: none; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .player.mode-companion .companion-opts { display: flex; }
+  .player.mode-companion.has-notes.collapsed .companion-opts { display: none; }
+  .cp-gen { flex: 1; font-size: 14px; font-weight: 600; color: var(--primary); background: #EEF4FF; border-color: #C7D9FF; }
+  .cp-gen:disabled { opacity: 0.6; cursor: wait; }
   .pl-notice { font-size: 12px; color: #92400E; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
   .speed-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; background: var(--card); }
   .voice-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; flex: 1; min-width: 140px; background: var(--card); }
@@ -161,6 +170,11 @@
   .para-segment { cursor: pointer; border-radius: 6px; padding: 2px 1px; transition: background 0.15s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
   .para-segment:hover { background: #FFF3EF; }
   .para-segment.active { background: #FFE0D5; }
+  /* 智慧陪讀：小老師的講解（藍）／提問（綠）泡泡，穿插在原文之間 */
+  .teacher-bubble { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; padding: 8px 12px; background: #EEF4FF; border: 1px solid #C7D9FF; border-radius: 12px; font-size: 14px; line-height: 1.7; color: #1E3A8A; cursor: pointer; white-space: normal; }
+  .teacher-bubble.ask { background: #F0FDF4; border-color: #BBF7D0; color: #166534; }
+  .teacher-bubble.active { box-shadow: 0 0 0 2px var(--primary); }
+  .teacher-bubble.ask.active { box-shadow: 0 0 0 2px var(--success); }
 
   /* Error */
   .error-box { background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius); padding: 14px 16px; font-size: 14px; color: #DC2626; margin-top: 16px; }
@@ -463,6 +477,9 @@ let hwImages = [], rdImages = [];
 let selectedSubject = '';
 let currentSegments = [];   // 繪本原文，一句一筆：{ text, el }
 let currentReadLang = 'zh';
+let readMode = lsGet('homie_read_mode', 'plain');   // 'plain' 純朗讀｜'companion' 智慧陪讀
+let companionNotes = null;      // 目前這本書的陪讀內容：[{ after, type:'talk'|'ask', text }]
+let currentRdHistoryTs = null;  // 目前這本書對應的歷史紀錄，陪讀內容會存回去
 
 // localStorage 在無痕模式等情況可能丟例外，偏好設定讀寫一律包起來
 function lsGet(k, d = '') { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
@@ -1021,7 +1038,7 @@ ${langInstr}。
     if (!text) throw new Error('回應為空');
     resultsEl.innerHTML = '';
     renderReadingResult(text, readLang);
-    saveHistory('rd', text, readLang);
+    currentRdHistoryTs = saveHistory('rd', text, readLang);
     loadHistoryUI('rd');
   } catch (e) {
     resultsEl.innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
@@ -1058,8 +1075,10 @@ function splitSentences(text) {
   return merged;
 }
 
-function renderReadingResult(text, readLang) {
+// companion：歷史紀錄裡存的陪讀內容（有的話直接用，不必重新產生）
+function renderReadingResult(text, readLang, companion) {
   stopTTS();
+  companionNotes = null;
   const resultsEl = document.getElementById('rdResults');
   currentReadLang = readLang;
   // 容忍空格與英文變體：=== 第 1 頁 === / === Page 1 ===
@@ -1111,11 +1130,19 @@ function renderReadingResult(text, readLang) {
     resultsEl.appendChild(card);
   });
 
+  // 句子編號是陪讀內容的定位依據；切句規則若改過、句數對不上，就不套用舊的陪讀內容
+  if (companion && Array.isArray(companion.notes) && companion.count === currentSegments.length) {
+    companionNotes = companion.notes;
+  }
+
   resultsEl.prepend(buildPlayer());
   document.getElementById('ttsSpeed').value = lsGet('homie_tts_rate', '1');
+  document.getElementById('cpGrade').value = companion?.grade || lsGet('homie_cp_grade', 'low');
+  document.getElementById('cpDensity').value = companion?.density || lsGet('homie_cp_density', 'mid');
   populateEngines();
   populateVoices(readLang);
   buildPlaylist();
+  if (readMode === 'companion' && !companionNotes) showPlayerNotice(COMPANION_HINT);
 
   // New question button
   const newQBtn = document.createElement('button');
@@ -1131,6 +1158,10 @@ function buildPlayer() {
   el.className = 'player' + (lsGet('homie_player_opts') === 'closed' ? ' collapsed' : '');
   el.id = 'rdPlayer';
   el.innerHTML = `
+    <div class="mode-toggle">
+      <button class="mode-btn" data-mode="plain" onclick="setReadMode('plain')">📖 純朗讀</button>
+      <button class="mode-btn" data-mode="companion" onclick="setReadMode('companion')">🧑‍🏫 智慧陪讀</button>
+    </div>
     <div class="player-main">
       <button class="pl-btn" onclick="skipItem(-1)" title="上一句" aria-label="上一句">⏮</button>
       <button class="pl-btn play" id="plPlay" onclick="togglePlay()">▶ 播放</button>
@@ -1149,6 +1180,20 @@ function buildPlayer() {
         <option value="1.5">快 1.5x</option>
       </select>
       <select class="voice-select" id="ttsVoice" onchange="onVoiceChange()" aria-label="語音"></select>
+    </div>
+    <div class="companion-opts">
+      <select class="speed-select" id="cpGrade" onchange="lsSet('homie_cp_grade', this.value)" aria-label="孩子年級">
+        <option value="k">幼兒園</option>
+        <option value="low">國小低年級</option>
+        <option value="mid">國小中年級</option>
+        <option value="high">國小高年級</option>
+      </select>
+      <select class="speed-select" id="cpDensity" onchange="lsSet('homie_cp_density', this.value)" aria-label="講解多寡">
+        <option value="few">講解少一點</option>
+        <option value="mid">講解適中</option>
+        <option value="many">講解多一點</option>
+      </select>
+      <button class="pl-btn cp-gen" id="cpGenBtn" onclick="generateCompanion()">✨ 產生陪讀內容</button>
     </div>
     <div class="pl-notice" id="plNotice" style="display:none"></div>`;
   return el;
@@ -1255,16 +1300,166 @@ let playSession = 0;
 let isPlaying = false;
 let currentUtterance = null;   // 保留參照，避免 Chrome 把 utterance 回收後 onend 不觸發
 let speechWasActive = false;
+let waitingAnswer = false;     // 小老師提問後停下來，等孩子回答
 
+// 純朗讀：逐句原文。智慧陪讀：原文中間穿插小老師的講解／提問泡泡（after = 插在第幾句之後，-1 為開場）
 function buildPlaylist() {
-  playlist = currentSegments.map((s, i) => ({ kind: 'read', seg: i, text: s.text, el: s.el }));
+  document.querySelectorAll('#rdResults .teacher-bubble').forEach(el => el.remove());
+  playlist = [];
+  const byAfter = new Map();
+  (readMode === 'companion' && companionNotes ? companionNotes : []).forEach(n => {
+    if (!byAfter.has(n.after)) byAfter.set(n.after, []);
+    byAfter.get(n.after).push(n);
+  });
+  const pushNotes = (after, place) => (byAfter.get(after) || []).forEach(n => {
+    const el = makeBubble(n);
+    place(el);
+    playlist.push({ kind: n.type, text: n.text, el });
+  });
+  if (currentSegments.length) pushNotes(-1, el => currentSegments[0].el.parentElement.before(el));
+  currentSegments.forEach((s, i) => {
+    playlist.push({ kind: 'read', seg: i, text: s.text, el: s.el });
+    let anchor = s.el;
+    pushNotes(i, el => { anchor.after(el); anchor = el; });
+  });
+  playlist.forEach((it, i) => { if (it.kind !== 'read') it.el.onclick = () => playFrom(i); });
+  updateModeUI();
   updatePlayerUI();
 }
+
+function makeBubble(n) {
+  const el = document.createElement('div');
+  el.className = 'teacher-bubble' + (n.type === 'ask' ? ' ask' : '');
+  const icon = document.createElement('span');
+  icon.textContent = n.type === 'ask' ? '🙋' : '🧑‍🏫';
+  const t = document.createElement('span');
+  t.textContent = n.text;   // AI 產生的文字一律走 textContent，不進 innerHTML
+  el.append(icon, t);
+  return el;
+}
+
+function updateModeUI() {
+  const pl = document.getElementById('rdPlayer');
+  if (!pl) return;
+  pl.classList.toggle('mode-companion', readMode === 'companion');
+  pl.classList.toggle('has-notes', !!companionNotes);
+  pl.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('on', b.dataset.mode === readMode);
+    b.setAttribute('aria-pressed', String(b.dataset.mode === readMode));
+  });
+  const btn = document.getElementById('cpGenBtn');
+  if (btn && !btn.disabled) btn.textContent = companionNotes ? '↻ 重新產生' : '✨ 產生陪讀內容';
+}
+
+const COMPANION_HINT = '選好孩子的年級，按「✨ 產生陪讀內容」，小老師就會在故事中穿插講解和提問。';
+
+// 切換模式：停下來，但保留目前唸到的原文句子
+function setReadMode(mode) {
+  const before = playlist.slice(0, playIdx + 1).filter(it => it.kind === 'read').pop();
+  const seg = playIdx >= 0 && before ? before.seg : undefined;
+  readMode = mode;
+  lsSet('homie_read_mode', mode);
+  pausePlayback();
+  waitingAnswer = false;
+  buildPlaylist();
+  playIdx = seg === undefined ? -1 : playlist.findIndex(it => it.kind === 'read' && it.seg === seg);
+  highlightItem(playIdx);
+  updatePlayerUI();
+  showPlayerNotice(mode === 'companion' && !companionNotes ? COMPANION_HINT : '');
+}
+
+// ===== 智慧陪讀：請 AI 備課 =====
+// 只送純文字（不重送照片），又快又便宜；AI 只負責「在哪裡插什麼話」，原文一字不動
+const GRADE_LABEL = { k: '幼兒園', low: '國小低年級', mid: '國小中年級', high: '國小高年級' };
+const DENSITY_RANGE = { few: [6, 8], mid: [3, 5], many: [2, 3] };
+
+function buildCompanionPrompt(grade, density) {
+  const n = currentSegments.length;
+  const [lo, hi] = DENSITY_RANGE[density] || DENSITY_RANGE.mid;
+  const maxNotes = Math.max(2, Math.ceil(n / lo) + 2);
+  const who = GRADE_LABEL[grade] || GRADE_LABEL.low;
+  const isEn = currentReadLang === 'en';
+  const lines = currentSegments.map((s, i) => `[${i}] ${s.text}`).join('\n');
+  return `你是一位親切、有耐心的台灣伴讀小老師，正在陪${who}的小朋友讀一本${isEn ? '英文' : '中文'}繪本。
+下面是繪本原文，已經切成編號的句子：
+${lines}
+
+請在故事中適當的地方，插入簡短的「講解」或「提問」，幫助孩子理解故事、認識詞語、引發思考。
+規則：
+1. 只能插入，不可以改寫、重複或摘要原文。
+2. 大約每 ${lo}～${hi} 句原文插入一次，總共最多 ${maxNotes} 則。可以在故事開始前用一句話開場（after 填 -1），故事結束後可以加一題回顧提問（after 填 ${n - 1}）。
+3. 每則 1～2 句話，口語、溫柔，用${who}孩子聽得懂的詞。
+4. 講解（talk）：解釋比較難的詞語、成語，或故事中發生了什麼。提問（ask）：請孩子預測、說感受或觀察，例如「你猜小熊接下來會怎麼做？」，要是孩子答得出來的問題。講解和提問交錯出現，提問不要太密。
+5. 一律使用繁體中文與台灣用語。${isEn ? '原文是英文：請用中文解釋重要的英文單字或句子意思，可以直接帶出英文單字，例如「brave 就是勇敢的意思」。' : ''}
+6. 不要使用表情符號、括號註記或任何格式記號，因為內容會直接被唸出來。
+
+只輸出 JSON 陣列，不要加任何說明或 markdown，格式如下：
+[{"after": 句子編號, "type": "talk" 或 "ask", "text": "要說的話"}]`;
+}
+
+// 容錯解析：允許前後有說明文字或 ```json 圍欄；編號超出範圍就夾回去；依位置排序
+function parseCompanion(text, n) {
+  const m = String(text || '').match(/\[[\s\S]*\]/);
+  let arr = null;
+  try { arr = m && JSON.parse(m[0]); } catch (e) {}
+  if (!Array.isArray(arr)) throw new Error('小老師的回覆格式不對，請再試一次');
+  return arr
+    .filter(x => x && typeof x.text === 'string' && x.text.trim() && x.after !== null && x.after !== '' && Number.isFinite(Number(x.after)))
+    .map(x => ({
+      after: Math.max(-1, Math.min(n - 1, Math.round(Number(x.after)))),
+      type: x.type === 'ask' ? 'ask' : 'talk',
+      text: x.text.trim().slice(0, 200)
+    }))
+    .sort((a, b) => a.after - b.after)
+    .slice(0, 60);
+}
+
+async function generateCompanion() {
+  if (!currentSegments.length) return;
+  const btn = document.getElementById('cpGenBtn');
+  const grade = document.getElementById('cpGrade').value;
+  const density = document.getElementById('cpDensity').value;
+  const book = currentSegments;   // 等待期間若換了一本書，結果就丟掉
+  pausePlayback();
+  btn.disabled = true;
+  btn.textContent = '⏳ 小老師備課中…';
+  try {
+    const text = await callAI(buildCompanionPrompt(grade, density), [], null);
+    if (text === null || book !== currentSegments) return;   // 沒設 Key（已提示）或已換書
+    const notes = parseCompanion(text, currentSegments.length);
+    if (!notes.length) throw new Error('小老師這次沒有產生內容，請再試一次');
+    companionNotes = notes;
+    saveCompanionToHistory({ notes, grade, density, count: currentSegments.length });
+    playIdx = -1;
+    buildPlaylist();
+    showPlayerNotice(`小老師準備好了：穿插 ${notes.length} 段講解和提問。按 ▶ 播放開始陪讀！`);
+  } catch (e) {
+    if (book === currentSegments) showPlayerNotice('❌ 陪讀內容產生失敗：' + e.message);
+  } finally {
+    btn.disabled = false;
+    updateModeUI();
+  }
+}
+
+function saveCompanionToHistory(companion) {
+  if (!currentRdHistoryTs) return;
+  let arr = [];
+  try { arr = JSON.parse(localStorage.getItem(HISTORY_KEY.rd) || '[]'); } catch (e) {}
+  const item = arr.find(x => x.ts === currentRdHistoryTs);
+  if (!item) return;
+  item.companion = companion;
+  try { localStorage.setItem(HISTORY_KEY.rd, JSON.stringify(arr)); } catch (e) {}
+  loadHistoryUI('rd');
+}
+
 
 function playFrom(idx) {
   if (!playlist.length || idx < 0) return;
   haltSpeech();
   if (activeEngine() !== 'browser') unlockAudio();
+  waitingAnswer = false;
+  // 手機上開始播放就先收起設定列（不記住），讓出畫面看故事；按 ⚙ 隨時可再展開
+  if (window.innerWidth <= 600) document.getElementById('rdPlayer')?.classList.add('collapsed');
   playIdx = Math.min(idx, playlist.length - 1);
   isPlaying = true;
   speakCurrent(++playSession);
@@ -1286,6 +1481,7 @@ function pausePlayback() {
 
 function stopTTS() {
   pausePlayback();
+  waitingAnswer = false;
   playIdx = -1;
   highlightItem(-1);
   updatePlayerUI();
@@ -1296,7 +1492,7 @@ function skipItem(delta) {
   const next = playIdx < 0 ? 0 : playIdx + delta;
   if (next < 0 || next >= playlist.length) return;
   if (isPlaying) playFrom(next);
-  else { playIdx = next; highlightItem(next); updatePlayerUI(); }
+  else { waitingAnswer = false; playIdx = next; highlightItem(next); updatePlayerUI(); }
 }
 
 function speakCurrent(session) {
@@ -1314,6 +1510,13 @@ function speakCurrent(session) {
   speakItem(item, session, () => {
     if (session !== playSession) return;
     playIdx++;
+    // 小老師問完問題就停下來，讓孩子有時間回答（提問泡泡維持高亮）
+    if (item.kind === 'ask' && playIdx < playlist.length) {
+      pausePlayback();
+      waitingAnswer = true;
+      updatePlayerUI();
+      return;
+    }
     speakCurrent(session);
   });
 }
@@ -1344,6 +1547,7 @@ function speakBrowser(item, session, done) {
   const voice = pickBrowserVoice(lang);
   if (voice) u.voice = voice;
   u.rate = getRate();
+  if (item.kind !== 'read') u.pitch = 1.15;   // 小老師音調稍高，和旁白區隔
   u.onend = () => done();
   u.onerror = e => {
     if (e.error === 'interrupted' || e.error === 'canceled') return;   // 我們自己 cancel 的
@@ -1611,7 +1815,7 @@ function updateMediaSession() {
 }
 
 function highlightItem(idx) {
-  document.querySelectorAll('.para-segment.active').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.para-segment.active, .teacher-bubble.active').forEach(el => el.classList.remove('active'));
   const el = playlist[idx]?.el;
   if (!el) return;
   el.classList.add('active');
@@ -1627,9 +1831,14 @@ function updatePlayerUI() {
   if (!btn) return;
   btn.textContent = isPlaying ? '⏸ 暫停' : (playIdx > 0 ? '▶ 繼續' : '▶ 播放');
   const st = document.getElementById('plStatus');
-  const total = playlist.length;
-  st.textContent = isPlaying && isLoading ? `⏳ 產生語音中…（第 ${playIdx + 1} / ${total} 句）`
-    : playIdx >= 0 && total ? `第 ${playIdx + 1} / ${total} 句${isPlaying ? '' : '（已暫停）'}`
+  // 句數只算原文；小老師的話不計入
+  const total = currentSegments.length;
+  const cur = playlist[playIdx];
+  const pos = Math.max(1, playlist.slice(0, playIdx + 1).filter(it => it.kind === 'read').length);
+  st.textContent = waitingAnswer && !isPlaying ? '🙋 換小朋友回答囉！說完再按 ▶ 繼續'
+    : isPlaying && isLoading ? '⏳ 產生語音中…'
+    : isPlaying && cur && cur.kind !== 'read' ? '🧑‍🏫 小老師說話中…'
+    : playIdx >= 0 && total ? `第 ${pos} / ${total} 句${isPlaying ? '' : '（已暫停）'}`
     : `💡 點任一句，就從那句開始唸（共 ${total} 句）`;
   updateMediaSession();
 }
@@ -1668,12 +1877,14 @@ const MAX_HISTORY = 10;
   });
 })();
 
+// 回傳這筆紀錄的 ts（繪本之後產生陪讀內容時，用它找回這筆存進去）
 function saveHistory(prefix, text, readLang, hint) {
   const key = HISTORY_KEY[prefix];
   let arr = [];
   try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+  const ts = Date.now();
   arr.unshift({
-    ts: Date.now(),
+    ts,
     subject: prefix === 'hw' ? (selectedSubject || '作業') : '繪本',
     // 去掉 markdown 與 HTML 標籤，預覽才不會出現 <mark> 這種字樣
     preview: text.replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80),
@@ -1683,6 +1894,7 @@ function saveHistory(prefix, text, readLang, hint) {
   });
   if (arr.length > MAX_HISTORY) arr = arr.slice(0, MAX_HISTORY);
   try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e) {}
+  return ts;
 }
 
 function loadHistoryUI(prefix) {
@@ -1706,7 +1918,7 @@ function loadHistoryUI(prefix) {
     const meta = document.createElement('div');
     meta.className = 'h-meta';
     const hintNote = item.hint ? `　💬 ${item.hint.slice(0, 14)}${item.hint.length > 14 ? '…' : ''}` : '';
-    meta.textContent = `${timeStr}　${item.subject}${hintNote}`;
+    meta.textContent = `${timeStr}　${item.subject}${hintNote}${item.companion ? '　🧑‍🏫 有陪讀' : ''}`;
     const prev = document.createElement('div');
     prev.className = 'h-preview';
     // 舊資料的 preview 可能還含 markdown／HTML 標記，這裡再清一次
@@ -1723,7 +1935,8 @@ function restoreHistory(prefix, item) {
   if (prefix === 'hw') {
     renderHomeworkResult(item.full, item.hint, false);
   } else {
-    renderReadingResult(item.full, item.readLang || 'zh');
+    currentRdHistoryTs = item.ts;
+    renderReadingResult(item.full, item.readLang || 'zh', item.companion);
   }
   resultsEl.scrollIntoView({ behavior: 'smooth' });
 }
