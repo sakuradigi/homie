@@ -143,16 +143,21 @@
   .result-content .q { color: var(--primary); font-weight: 600; }
   .result-content .a { color: var(--text); }
 
-  /* TTS Controls */
-  .tts-controls { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
-  .tts-btn { border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; background: var(--card); transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
-  .tts-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .tts-btn.playing { background: var(--accent); color: white; border-color: var(--accent); }
-  .speed-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; }
-  .voice-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; flex: 1; min-width: 140px; }
+  /* 朗讀播放器：捲動時黏在畫面上方（header 下），唸到第 5 頁也按得到 */
+  .player { position: sticky; top: 88px; z-index: 20; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px; margin: 8px 0 14px; }
+  .player-main { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .pl-btn { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 10px; min-width: 44px; height: 44px; padding: 0 10px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .pl-btn.play { background: var(--accent); border-color: var(--accent); color: white; font-weight: 700; min-width: 100px; }
+  .pl-status { font-size: 12px; color: var(--muted); margin-left: 4px; flex: 1; min-width: 120px; }
+  .player-opts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .pl-notice { font-size: 12px; color: #92400E; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
+  .speed-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; background: var(--card); }
+  .voice-select { border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; cursor: pointer; flex: 1; min-width: 140px; background: var(--card); }
 
-  /* Paragraph segments */
-  .para-segment { padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background 0.15s; line-height: 1.9; font-size: 15px; }
+  /* 句子：一句一段，點任一句就從那句開始唸 */
+  .para { margin-bottom: 10px; }
+  .para.empty { color: var(--muted); font-size: 13px; }
+  .para-segment { cursor: pointer; border-radius: 6px; padding: 2px 1px; transition: background 0.15s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
   .para-segment:hover { background: #FFF3EF; }
   .para-segment.active { background: #FFE0D5; }
 
@@ -235,10 +240,10 @@
     /* Result cards full bleed */
     .result-card { padding: 14px 12px; border-radius: 10px; }
     .result-content { font-size: 16px; line-height: 2; }
-    .para-segment { font-size: 16px; padding: 10px 8px; }
 
-    /* TTS controls stack vertically */
-    .tts-controls { gap: 8px; }
+    /* 播放器：狀態文字獨立一行，按鈕不被擠壓 */
+    .player { top: 84px; padding: 8px 10px; }
+    .pl-status { flex-basis: 100%; margin: 2px 0 0; }
     .speed-select, .voice-select { font-size: 14px; padding: 10px 8px; }
 
     /* Subject chips larger */
@@ -455,10 +460,12 @@
 // ===== STATE =====
 let hwImages = [], rdImages = [];
 let selectedSubject = '';
-let ttsUtterance = null;
-let currentSegments = [];
-let currentSegIdx = -1;
+let currentSegments = [];   // 繪本原文，一句一筆：{ text, el }
 let currentReadLang = 'zh';
+
+// localStorage 在無痕模式等情況可能丟例外，偏好設定讀寫一律包起來
+function lsGet(k, d = '') { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
 // ===== PROVIDER CONFIG =====
 const PROVIDERS = {
@@ -663,15 +670,13 @@ function hideCaptureSheet() {
   document.getElementById('coBg').classList.remove('show');
 }
 
-function addImages(files, prefix) {
-  const arr = prefix === 'hw' ? hwImages : rdImages;
-  Array.from(files).forEach(file => {
-    compressImage(file).then(img => {
-      arr.push(img);
-      renderPreview(prefix);
-      updateShootBar(prefix);
-    });
-  });
+// 全部壓縮完再依選取順序一起加入：多張同時壓縮時先壓完的不一定是第一張，繪本頁序會亂
+async function addImages(files, prefix) {
+  const imgs = await Promise.all(Array.from(files).map(f => compressImage(f)));
+  const arr = prefix === 'hw' ? hwImages : rdImages;   // await 之後才取，避免期間被「清除全部」換掉
+  arr.push(...imgs);
+  renderPreview(prefix);
+  updateShootBar(prefix);
 }
 
 function renderPreview(prefix) {
@@ -1025,7 +1030,34 @@ ${langInstr}。
   }
 }
 
+// 把一段文字切成句子：中文看「。！？；…」，英文看「. ! ?」後面接空白；句尾的引號、括號跟著前一句。
+// 太短的句子（「嗯。」「Oh!」）併到下一句，免得一段一段唸得很碎。
+function splitSentences(text) {
+  const END = '。！？!?；;…', CLOSE = '」』”’"\')）';
+  const out = [];
+  let buf = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    buf += c;
+    const isEnd = END.includes(c) || (c === '.' && (i + 1 >= text.length || /\s/.test(text[i + 1])));
+    if (!isEnd) continue;
+    while (i + 1 < text.length && (END.includes(text[i + 1]) || CLOSE.includes(text[i + 1]))) buf += text[++i];
+    if (buf.trim()) out.push(buf.trim());
+    buf = '';
+  }
+  if (buf.trim()) out.push(buf.trim());
+  const merged = [];
+  for (const s of out) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && last.length < 8) {
+      merged[merged.length - 1] = last + (/[\x00-\x7F]$/.test(last) ? ' ' : '') + s;
+    } else merged.push(s);
+  }
+  return merged;
+}
+
 function renderReadingResult(text, readLang) {
+  stopTTS();
   const resultsEl = document.getElementById('rdResults');
   currentReadLang = readLang;
   // 容忍空格與英文變體：=== 第 1 頁 === / === Page 1 ===
@@ -1035,8 +1067,8 @@ function renderReadingResult(text, readLang) {
     return;
   }
 
-  // Flatten all paragraphs for TTS
   currentSegments = [];
+  const sentenceGap = readLang === 'en' ? ' ' : '';
 
   pages.forEach((pageText, pi) => {
     const card = document.createElement('div');
@@ -1050,42 +1082,37 @@ function renderReadingResult(text, readLang) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'result-content';
 
-    const paras = pageText.trim().split('\n').filter(p => p.trim());
-    paras.forEach((para, qi) => {
-      if (!para.trim()) return;
-      const segIdx = currentSegments.length;
-      currentSegments.push(para.trim());
-      const segEl = document.createElement('div');
-      segEl.className = 'para-segment';
-      segEl.dataset.idx = segIdx;
-      segEl.textContent = para.trim();
-      segEl.onclick = () => startTTSFrom(segIdx, readLang);
-      contentDiv.appendChild(segEl);
+    pageText.trim().split('\n').map(p => p.trim()).filter(Boolean).forEach(para => {
+      const pEl = document.createElement('div');
+      pEl.className = 'para';
+      // 「（本頁無文字）」照樣顯示，但不唸出來
+      if (/^[（(]\s*本頁無文字\s*[)）]$/.test(para)) {
+        pEl.classList.add('empty');
+        pEl.textContent = para;
+        contentDiv.appendChild(pEl);
+        return;
+      }
+      splitSentences(para).forEach((sentence, si) => {
+        if (si && sentenceGap) pEl.appendChild(document.createTextNode(sentenceGap));
+        const segIdx = currentSegments.length;
+        const segEl = document.createElement('span');
+        segEl.className = 'para-segment';
+        segEl.textContent = sentence;
+        segEl.onclick = () => playFrom(playlist.findIndex(it => it.kind === 'read' && it.seg === segIdx));
+        pEl.appendChild(segEl);
+        currentSegments.push({ text: sentence, el: segEl });
+      });
+      contentDiv.appendChild(pEl);
     });
 
     card.appendChild(contentDiv);
     resultsEl.appendChild(card);
   });
 
-  // 單一全域朗讀控制列（語速／語音對全文生效）
-  const globalCtrl = document.createElement('div');
-  globalCtrl.style.cssText = 'display:flex;gap:8px;margin-top:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;';
-  globalCtrl.innerHTML = `
-    <button class="tts-btn" onclick="startTTSFrom(0,'${readLang}')" style="flex:1;justify-content:center;">▶ 從頭朗讀全文</button>
-    <button class="tts-btn" onclick="stopTTS()" style="justify-content:center;">⏹ 停止</button>
-    <select class="speed-select" id="ttsSpeed">
-      <option value="0.7">慢 0.7x</option>
-      <option value="0.85">0.85x</option>
-      <option value="1" selected>正常 1x</option>
-      <option value="1.2">1.2x</option>
-      <option value="1.5">快 1.5x</option>
-    </select>
-    <select class="voice-select" id="ttsVoice">
-      <option value="">預設語音</option>
-    </select>
-  `;
-  resultsEl.prepend(globalCtrl);
+  resultsEl.prepend(buildPlayer());
+  document.getElementById('ttsSpeed').value = lsGet('homie_tts_rate', '1');
   populateVoices(readLang);
+  buildPlaylist();
 
   // New question button
   const newQBtn = document.createElement('button');
@@ -1095,67 +1122,235 @@ function renderReadingResult(text, readLang) {
   resultsEl.appendChild(newQBtn);
 }
 
+function buildPlayer() {
+  const el = document.createElement('div');
+  el.className = 'player';
+  el.id = 'rdPlayer';
+  el.innerHTML = `
+    <div class="player-main">
+      <button class="pl-btn" onclick="skipItem(-1)" title="上一句" aria-label="上一句">⏮</button>
+      <button class="pl-btn play" id="plPlay" onclick="togglePlay()">▶ 播放</button>
+      <button class="pl-btn" onclick="skipItem(1)" title="下一句" aria-label="下一句">⏭</button>
+      <button class="pl-btn" onclick="playFrom(0)" title="從頭開始" aria-label="從頭開始">↺</button>
+      <span class="pl-status" id="plStatus"></span>
+    </div>
+    <div class="player-opts">
+      <select class="speed-select" id="ttsSpeed" onchange="onSpeedChange()" aria-label="語速">
+        <option value="0.7">慢 0.7x</option>
+        <option value="0.85">0.85x</option>
+        <option value="1">正常 1x</option>
+        <option value="1.2">1.2x</option>
+        <option value="1.5">快 1.5x</option>
+      </select>
+      <select class="voice-select" id="ttsVoice" onchange="onVoiceChange()" aria-label="語音"></select>
+    </div>
+    <div class="pl-notice" id="plNotice" style="display:none"></div>`;
+  return el;
+}
+
+function getRate() {
+  return parseFloat(document.getElementById('ttsSpeed')?.value || lsGet('homie_tts_rate', '1')) || 1;
+}
+
+function onSpeedChange() {
+  lsSet('homie_tts_rate', String(getRate()));
+}
+
+function onVoiceChange() {
+  lsSet('homie_voice_' + currentReadLang, document.getElementById('ttsVoice').value);
+}
+
+function showPlayerNotice(msg) {
+  const el = document.getElementById('plNotice');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// ===== 手機內建語音（Web Speech）=====
+// Android Chrome 回報的語言常是 zh_TW（底線）或 cmn-Hant-TW，先正規化再比對
+function normLang(l) { return (l || '').replace(/_/g, '-').toLowerCase(); }
+
+const NOVELTY_VOICES = /bells|boing|bubbles|cellos|wobble|bad news|good news|jester|organ|superstar|trinoids|whisper|zarvox|albert|bahh|deranged|hysterical/i;
+
+// 幫語音打分數：台灣口音、標示 Natural／Neural／Enhanced 的高品質語音優先
+function voiceScore(v, lang) {
+  const l = normLang(v.lang), n = (v.name || '').toLowerCase();
+  let s = 0;
+  if (lang === 'zh') {
+    if (/-(tw|hant)/.test(l) || /taiwan|台灣|臺灣|國語/.test(n)) s += 50;
+    else if (/-(hk|yue)/.test(l) || /hong kong|cantonese|粵|香港/.test(n)) s -= 40;
+  } else {
+    if (l === 'en-us') s += 20;
+    else if (l === 'en-gb') s += 10;
+  }
+  if (/natural|neural|online|premium|enhanced|增強|優化/.test(n)) s += 30;
+  if (v.localService === false) s += 5;   // 雲端語音通常比較自然
+  if (NOVELTY_VOICES.test(n)) s -= 100;
+  return s;
+}
+
+function voicesFor(lang) {
+  if (!window.speechSynthesis) return [];
+  const re = lang === 'zh' ? /^(zh|cmn)\b/ : /^en\b/;
+  return speechSynthesis.getVoices()
+    .filter(v => re.test(normLang(v.lang)))
+    .sort((a, b) => voiceScore(b, lang) - voiceScore(a, lang));
+}
+
+// 使用者選過就用選的；沒選（自動）就挑分數最高的
+function pickBrowserVoice(lang) {
+  const list = voicesFor(lang);
+  const saved = lsGet('homie_voice_' + lang);
+  return (saved && list.find(v => v.name === saved)) || list[0] || null;
+}
+
 function populateVoices(readLang) {
   const sel = document.getElementById('ttsVoice');
-  if (!sel || !window.speechSynthesis) return;
-  const prev = sel.value;
-  sel.querySelectorAll('option:not(:first-child)').forEach(o => o.remove());
-  const target = readLang === 'zh' ? 'zh' : 'en';
-  speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith(target)).forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.name;
-    opt.textContent = v.name;
-    sel.appendChild(opt);
-  });
-  sel.value = prev && [...sel.options].some(o => o.value === prev) ? prev : '';
+  if (!sel) return;
+  const list = voicesFor(readLang);
+  const saved = lsGet('homie_voice_' + readLang);
+  sel.innerHTML = '';
+  sel.add(new Option(list.length ? `自動挑選（${list[0].name}）` : '預設語音', ''));
+  list.forEach(v => sel.add(new Option(v.name, v.name)));
+  sel.value = saved && list.some(v => v.name === saved) ? saved : '';
 }
 
-// ===== TTS =====
-function startTTSFrom(idx, readLang) {
-  stopTTS();
-  currentSegIdx = idx;
-  speakNext(readLang);
+// ===== 朗讀播放器 =====
+// playlist 是實際播放順序（每筆 { kind:'read', seg, text, el }）。
+// playSession 每次開始／暫停／停止都 +1；舊的語音回呼發現號碼不符就忽略。
+// 沒有這層防護時，cancel() 之後瀏覽器補發的 onend 會讓索引 +1 繼續唸，
+// 造成「按停止卻又從第 1 句開始唸」「點句子會跳句」。
+let playlist = [];
+let playIdx = -1;
+let playSession = 0;
+let isPlaying = false;
+let currentUtterance = null;   // 保留參照，避免 Chrome 把 utterance 回收後 onend 不觸發
+let speechWasActive = false;
+
+function buildPlaylist() {
+  playlist = currentSegments.map((s, i) => ({ kind: 'read', seg: i, text: s.text, el: s.el }));
+  updatePlayerUI();
 }
 
-function speakNext(readLang) {
-  if (currentSegIdx >= currentSegments.length) {
-    highlightSegment(-1);
-    return;
-  }
-  const text = currentSegments[currentSegIdx];
-  highlightSegment(currentSegIdx);
-  const u = new SpeechSynthesisUtterance(text);
+function playFrom(idx) {
+  if (!playlist.length || idx < 0) return;
+  haltSpeech();
+  playIdx = Math.min(idx, playlist.length - 1);
+  isPlaying = true;
+  speakCurrent(++playSession);
+}
 
-  // Speed / voice from the global controls
-  const speedEl = document.getElementById('ttsSpeed');
-  u.rate = speedEl ? parseFloat(speedEl.value) : 1;
+function togglePlay() {
+  if (isPlaying) pausePlayback();
+  else playFrom(playIdx >= 0 && playIdx < playlist.length ? playIdx : 0);
+}
 
-  const voiceEl = document.getElementById('ttsVoice');
-  if (voiceEl && voiceEl.value) {
-    const voices = speechSynthesis.getVoices();
-    u.voice = voices.find(v => v.name === voiceEl.value) || null;
-  }
-  u.lang = readLang === 'zh' ? 'zh-TW' : 'en-US';
-
-  u.onend = () => {
-    currentSegIdx++;
-    speakNext(readLang);
-  };
-  ttsUtterance = u;
-  speechSynthesis.speak(u);
+// 暫停＝停下並記住唸到哪一句，按繼續從那句重唸。
+// （Android Chrome 的 speechSynthesis.pause() 沒有作用，所以不依賴它）
+function pausePlayback() {
+  playSession++;
+  haltSpeech();
+  isPlaying = false;
+  updatePlayerUI();
 }
 
 function stopTTS() {
-  // 少數瀏覽器沒有語音合成 API；沒有防護的話會讓「新題目」「切換分頁」整個壞掉
-  if (window.speechSynthesis) speechSynthesis.cancel();
-  highlightSegment(-1);
-  currentSegIdx = -1;
+  pausePlayback();
+  playIdx = -1;
+  highlightItem(-1);
+  updatePlayerUI();
 }
 
-function highlightSegment(idx) {
-  document.querySelectorAll('.para-segment').forEach((el, i) => {
-    el.classList.toggle('active', i === idx);
+function skipItem(delta) {
+  if (!playlist.length) return;
+  const next = playIdx < 0 ? 0 : playIdx + delta;
+  if (next < 0 || next >= playlist.length) return;
+  if (isPlaying) playFrom(next);
+  else { playIdx = next; highlightItem(next); updatePlayerUI(); }
+}
+
+function speakCurrent(session) {
+  if (session !== playSession) return;
+  if (playIdx >= playlist.length) {   // 整本唸完
+    isPlaying = false;
+    playIdx = -1;
+    highlightItem(-1);
+    updatePlayerUI();
+    return;
+  }
+  const item = playlist[playIdx];
+  highlightItem(playIdx);
+  updatePlayerUI();
+  speakItem(item, session, () => {
+    if (session !== playSession) return;
+    playIdx++;
+    speakCurrent(session);
   });
+}
+
+function speakItem(item, session, done) {
+  speakBrowser(item, session, done);
+}
+
+function haltSpeech() {
+  if (!window.speechSynthesis) return;   // 少數瀏覽器沒有語音合成 API
+  speechWasActive = speechSynthesis.speaking || speechSynthesis.pending;
+  speechSynthesis.cancel();
+}
+
+function speakBrowser(item, session, done) {
+  if (!window.speechSynthesis) {
+    showPlayerNotice('這個瀏覽器不支援語音朗讀，請改用 Chrome 或 Safari。');
+    pausePlayback();
+    return;
+  }
+  const lang = item.kind === 'read' ? currentReadLang : 'zh';
+  const u = new SpeechSynthesisUtterance(item.text);
+  u.lang = lang === 'zh' ? 'zh-TW' : 'en-US';
+  const voice = pickBrowserVoice(lang);
+  if (voice) u.voice = voice;
+  u.rate = getRate();
+  u.onend = () => done();
+  u.onerror = e => {
+    if (e.error === 'interrupted' || e.error === 'canceled') return;   // 我們自己 cancel 的
+    if (e.error === 'not-allowed') {   // 瀏覽器要求使用者先點一下
+      if (session === playSession) { pausePlayback(); showPlayerNotice('請再按一次 ▶ 播放'); }
+      return;
+    }
+    done();   // 其他錯誤：跳過這句繼續
+  };
+  currentUtterance = u;
+  // Chrome 在 cancel() 後立刻 speak() 偶爾會被吞掉，所以剛中斷過就稍等再唸；
+  // 沒有正在唸的語音時直接唸，保留 iOS 要求的「在使用者點擊當下」觸發。
+  if (speechWasActive) {
+    speechWasActive = false;
+    setTimeout(() => { if (session === playSession) speechSynthesis.speak(u); }, 80);
+  } else {
+    speechSynthesis.speak(u);
+  }
+}
+
+function highlightItem(idx) {
+  document.querySelectorAll('.para-segment.active').forEach(el => el.classList.remove('active'));
+  const el = playlist[idx]?.el;
+  if (!el) return;
+  el.classList.add('active');
+  if (!isPlaying) return;
+  // 唸到畫面外（被上方播放器或下方按鈕擋住）才捲動，避免一直跳
+  const r = el.getBoundingClientRect();
+  if (r.top < 200 || r.bottom > window.innerHeight - 100) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function updatePlayerUI() {
+  const btn = document.getElementById('plPlay');
+  if (!btn) return;
+  btn.textContent = isPlaying ? '⏸ 暫停' : (playIdx > 0 ? '▶ 繼續' : '▶ 播放');
+  const st = document.getElementById('plStatus');
+  const total = playlist.length;
+  st.textContent = playIdx >= 0 && total
+    ? `第 ${playIdx + 1} / ${total} 句${isPlaying ? '' : '（已暫停）'}`
+    : `💡 點任一句，就從那句開始唸（共 ${total} 句）`;
 }
 
 // ===== PROGRESS =====
