@@ -1087,7 +1087,7 @@ async function runReading() {
 ${langInstr}。
 請逐頁辨識以下圖片中的故事內容，並：
 1. 去除所有頁碼、書名標題列、出版社資訊等非故事內容。
-2. 保留完整的故事文字，依原本段落分行。
+2. 保留完整的故事文字。書本因為版面寬度、印刷排版造成的換行，請合併回完整的句子和段落；只有真正的段落結束、換人說話，或詩歌／童謠刻意分行時才換行。英文被連字號拆到兩行的單字請接回。
 3. 每頁之間請用「===第N頁===」分隔。
 4. 若某頁沒有文字，請寫「（本頁無文字）」。
 只輸出辨識後的文字，不要加任何說明。`;
@@ -1145,11 +1145,36 @@ function splitSentences(text) {
 }
 
 // companion：歷史紀錄裡存的陪讀內容（有的話直接用，不必重新產生）
+// 書本因版面寬度造成的斷行（AI 沒合併乾淨時的保險，也修正舊的歷史紀錄）：
+// 一行沒在句尾結束，就跟下一行接起來。例外：兩行都很短又都沒有標點，視為童謠／詩歌刻意分行。
+// 英文：下一行小寫開頭才接（大寫開頭多半是新句子或刻意分行），被連字號拆開的單字接回。
+function mergeLayoutLines(lines) {
+  const END = /[。！？!?…；;」』”’"'）).:：]$/;
+  const PUNCT = /[，。！？、；：,.!?;:「」『』“”"…]/;
+  const out = [];
+  for (const line of lines) {
+    const prev = out[out.length - 1];
+    if (prev === undefined || END.test(prev) || /^[（(]\s*本頁無文字/.test(line)) { out.push(line); continue; }
+    const latin = /[A-Za-z0-9,\-]$/.test(prev) && /^[A-Za-z0-9]/.test(line);
+    if (latin) {
+      if (/[A-Za-z]-$/.test(prev) && /^[a-z]/.test(line)) out[out.length - 1] = prev.slice(0, -1) + line;
+      else if (/^[a-z]/.test(line) || /[,\-]$/.test(prev)) out[out.length - 1] = prev + ' ' + line;
+      else out.push(line);
+      continue;
+    }
+    const verse = !PUNCT.test(prev) && !PUNCT.test(line) && prev.length <= 12 && line.length <= 12;
+    if (verse) out.push(line);
+    else out[out.length - 1] = prev + line;
+  }
+  return out;
+}
+
 function renderReadingResult(text, readLang, companion) {
   activatePlayer('rd');
   stopTTS();
   companionNotes = null;
   const resultsEl = document.getElementById('rdResults');
+  resultsEl.innerHTML = '';
   currentReadLang = readLang;
   // 容忍空格與英文變體：=== 第 1 頁 === / === Page 1 ===
   const pages = text.split(/===\s*(?:第\s*\d+\s*頁|Page\s*\d+)\s*===/i).filter(p => p.trim());
@@ -1173,7 +1198,7 @@ function renderReadingResult(text, readLang, companion) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'result-content';
 
-    pageText.trim().split('\n').map(p => p.trim()).filter(Boolean).forEach(para => {
+    mergeLayoutLines(pageText.trim().split('\n').map(p => p.trim()).filter(Boolean)).forEach(para => {
       const pEl = document.createElement('div');
       pEl.className = 'para';
       // 「（本頁無文字）」照樣顯示，但不唸出來
@@ -1326,6 +1351,15 @@ function onVoiceChange() {
   const engine = activeEngine();
   lsSet('homie_voice_' + (engine === 'browser' ? currentReadLang : engine), plEl('ttsVoice').value);
   if (isPlaying) playFrom(playIdx);   // 換聲音立刻從這句重唸，馬上聽得出差別
+  else previewVoice();                // 沒在播：唸一句範例試聽
+}
+
+function previewVoice() {
+  haltSpeech();
+  const session = ++playSession;
+  if (activeEngine() !== 'browser') unlockAudio();
+  const text = currentReadLang === 'en' ? "Hi! Let's read a story together." : '你好，我們一起來讀故事吧！';
+  speakItem({ kind: 'read', text }, session, () => {});
 }
 
 function showPlayerNotice(msg) {
@@ -1381,8 +1415,22 @@ function populateVoices(readLang) {
   if (!sel) return;
   const cfg = TTS_ENGINES[engine];
   sel.innerHTML = '';
-  cfg.voices.forEach(([v, label]) => sel.add(new Option(`${label}（${v}）`, v)));
+  [['f', '👩 女聲'], ['m', '👨 男聲']].forEach(([g, title]) => {
+    const grp = document.createElement('optgroup');
+    grp.label = title;
+    cfg.voices.filter(v => v[2] === g).forEach(([v, label]) =>
+      grp.appendChild(new Option(`${g === 'f' ? '👩' : '👨'} ${label}（${v}）`, v)));
+    sel.appendChild(grp);
+  });
   sel.value = cloudVoice(engine, 'read');
+}
+
+// 瀏覽器語音沒有性別欄位，只能從常見名字判斷；認不出來（例如 Android 只回報「中文（台灣）」）就不標
+function browserVoiceGender(v) {
+  const n = (v.name || '').toLowerCase();
+  if (/female|女|meijia|mei-jia|tingting|ting-ting|sinji|sin-ji|hsiaochen|hsiaoyu|yating|hanhan|xiaoxiao|xiaoyi|huihui|yaoyao|samantha|karen|moira|tessa|victoria|serena|allison|\bava\b|susan|zira|aria|jenny|\bflo\b|sandy|shelley|grandma|google 國語|google 普通|google us english/.test(n)) return 'f';
+  if (/\bmale|男|zhiwei|yunjhe|yunxi|yunyang|kangkang|daniel|\balex\b|\bfred\b|\btom\b|aaron|arthur|\bguy\b|davis|eddy|reed|rocko|grandpa/.test(n)) return 'm';
+  return '';
 }
 
 function populateBrowserVoices(readLang) {
@@ -1391,8 +1439,9 @@ function populateBrowserVoices(readLang) {
   const list = voicesFor(readLang);
   const saved = lsGet('homie_voice_' + readLang);
   sel.innerHTML = '';
-  sel.add(new Option(list.length ? `自動挑選（${list[0].name}）` : '預設語音', ''));
-  list.forEach(v => sel.add(new Option(v.name, v.name)));
+  const tag = v => ({ f: '👩 ', m: '👨 ' }[browserVoiceGender(v)] || '');
+  sel.add(new Option(list.length ? `自動挑選（${tag(list[0])}${list[0].name}）` : '預設語音', ''));
+  list.forEach(v => sel.add(new Option(tag(v) + v.name, v.name)));
   sel.value = saved && list.some(v => v.name === saved) ? saved : '';
 }
 
@@ -1683,21 +1732,22 @@ const GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
 let TTS_RETRY_MS = 1500;   // 遇到 429（太頻繁）時的等待基數
 
-// voices：[音色 ID, 中文描述]；teacher／teacherAlt：智慧陪讀「小老師」用的聲音（與旁白不同才分得出來）
+// voices：[音色 ID, 中文描述, 性別 f／m]。Gemini 性別依 Google 官方音色表；OpenAI 官方未標示，依一般聽感。
+// 智慧陪讀的「小老師」自動用和旁白相反性別的第一個聲音，一聽就分得出來
 const TTS_ENGINES = {
   browser: { label: '📱 手機內建語音（免費）' },
   gemini: {
     label: '✨ AI 自然語音・Gemini',
-    voices: [['Sulafat', '溫暖'], ['Vindemiatrix', '溫柔'], ['Achird', '親切'], ['Leda', '活潑'],
-             ['Aoede', '輕快'], ['Despina', '柔順'], ['Puck', '開朗'], ['Charon', '沉穩']],
-    teacher: 'Achird', teacherAlt: 'Leda',
+    voices: [['Sulafat', '溫暖', 'f'], ['Vindemiatrix', '溫柔', 'f'], ['Leda', '活潑', 'f'], ['Aoede', '輕快', 'f'],
+             ['Despina', '柔順', 'f'], ['Achird', '親切', 'm'], ['Puck', '開朗', 'm'], ['Charon', '沉穩', 'm'],
+             ['Algieba', '柔和', 'm'], ['Iapetus', '清晰', 'm']],
     note: 'AI 語音會使用你的 Gemini API 額度，同一句只產生一次。'
   },
   openai: {
     label: '✨ AI 自然語音・OpenAI',
-    voices: [['marin', '自然（推薦）'], ['cedar', '沉穩（推薦）'], ['coral', '溫暖'], ['nova', '明亮'],
-             ['shimmer', '柔和'], ['sage', '平靜']],
-    teacher: 'coral', teacherAlt: 'nova',
+    voices: [['marin', '自然（推薦）', 'f'], ['coral', '溫暖', 'f'], ['nova', '明亮', 'f'], ['shimmer', '柔和', 'f'],
+             ['sage', '平靜', 'f'], ['cedar', '沉穩（推薦）', 'm'], ['ash', '清晰', 'm'], ['echo', '柔和', 'm'],
+             ['onyx', '低沉', 'm']],
     note: 'AI 語音會使用你的 OpenAI API 額度（約 US$0.015／分鐘），同一句只產生一次。'
   }
 };
@@ -1747,7 +1797,8 @@ function cloudVoice(engine, role) {
   const saved = lsGet('homie_voice_' + engine);
   const narrator = cfg.voices.some(([v]) => v === saved) ? saved : cfg.voices[0][0];
   if (role === 'read') return narrator;
-  return narrator === cfg.teacher ? cfg.teacherAlt : cfg.teacher;
+  const g = cfg.voices.find(([v]) => v === narrator)[2];
+  return cfg.voices.find(([, , vg]) => vg !== g)[0];
 }
 
 // 語氣指示（兩家都是用自然語言描述想要的唸法，不會被唸出來）
@@ -1873,7 +1924,7 @@ async function speakCloud(engine, item, session, done) {
   }
   if (session !== playSession) return;
   isLoading = false;
-  for (let j = playIdx + 1; j <= playIdx + 2 && j < playlist.length; j++) {
+  for (let j = playIdx + 1; isPlaying && j <= playIdx + 2 && j < playlist.length; j++) {
     getCloudAudio(engine, playlist[j]).catch(() => {});   // 預先產生後兩句
   }
   const a = getAudioEl();

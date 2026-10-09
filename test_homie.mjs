@@ -603,6 +603,62 @@ await sleep(150);
 check('再點解題段落切回解題', spoken[spoken.length - 1] === '需要訂正' && T.state().len === 5, JSON.stringify(spoken));
 win.stopTTS();
 
+// ── 18. 書本排版斷行合併 ─────────────────────────────
+let m18 = win.mergeLayoutLines(['小熊肚子好餓，他慢慢地走', '進森林裡找東西吃。', '森林裡好安靜。']);
+check('中文排版斷行接回', eq(m18, ['小熊肚子好餓，他慢慢地走進森林裡找東西吃。', '森林裡好安靜。']), JSON.stringify(m18));
+m18 = win.mergeLayoutLines(['一閃一閃亮晶晶', '滿天都是小星星']);
+check('童謠短行不合併', m18.length === 2, JSON.stringify(m18));
+m18 = win.mergeLayoutLines(['「你好嗎？」', '小熊問。']);
+check('對話結束的行不合併', m18.length === 2);
+m18 = win.mergeLayoutLines(['The little bear walked into the', 'forest to look for some won-', 'derful food.', 'It was quiet.']);
+check('英文斷行與連字號接回', eq(m18, ['The little bear walked into the forest to look for some wonderful food.', 'It was quiet.']), JSON.stringify(m18));
+m18 = win.mergeLayoutLines(['Twinkle twinkle little star', 'How I wonder what you are']);
+check('英文大寫開頭的行不合併', m18.length === 2);
+win.localStorage.setItem('homie_tts_engine', 'browser');
+win.renderReadingResult('===第1頁===\n小熊肚子好餓，他慢慢地走\n進森林裡找東西吃。森林裡好安靜。', 'zh');
+const segs18 = [...win.document.querySelectorAll('#rdResults .para-segment')].map(e => e.textContent);
+check('朗讀不再被排版斷行切斷', eq(segs18, ['小熊肚子好餓，他慢慢地走進森林裡找東西吃。', '森林裡好安靜。']), JSON.stringify(segs18));
+let ocrPrompt = '';
+T.setRdImages(1);
+T.stubCallAI(async (prompt) => { ocrPrompt = prompt; return '===第1頁===\n測試。'; });
+await win.runReading();
+check('辨識指令要求合併排版斷行', ocrPrompt.includes('排版造成的換行'));
+
+// ── 19. 男聲女聲 ─────────────────────────────────────
+win.localStorage.setItem('homie_gemini_key', 'AIza-test');
+win.localStorage.setItem('homie_tts_engine', 'gemini');
+win.renderReadingResult(BOOK, 'zh');
+const groups = [...win.document.querySelectorAll('#ttsVoice optgroup')].map(g => g.label);
+check('AI 音色分女聲／男聲兩組', eq(groups, ['👩 女聲', '👨 男聲']), JSON.stringify(groups));
+check('音色名稱帶性別圖示', win.document.querySelector('#ttsVoice option').textContent.startsWith('👩'));
+check('女聲旁白 → 小老師用男聲', win.cloudVoice('gemini', 'teacher') === 'Achird');
+win.localStorage.setItem('homie_voice_gemini', 'Puck');
+check('男聲旁白 → 小老師用女聲', win.cloudVoice('gemini', 'teacher') === 'Sulafat');
+win.localStorage.setItem('homie_voice_openai', 'cedar');
+check('OpenAI 男聲旁白 → 小老師用女聲', win.cloudVoice('openai', 'teacher') === 'marin');
+win.localStorage.removeItem('homie_voice_gemini');
+check('內建語音認得的名字標女聲', win.browserVoiceGender({ name: 'Meijia' }) === 'f' && win.browserVoiceGender({ name: 'Microsoft HsiaoChen Online (Natural)' }) === 'f');
+check('內建語音認得的名字標男聲', win.browserVoiceGender({ name: 'Microsoft Zhiwei' }) === 'm' && win.browserVoiceGender({ name: 'Google UK English Male' }) === 'm');
+check('Female 不會被誤判成 Male', win.browserVoiceGender({ name: 'Google UK English Female' }) === 'f');
+check('認不出的名字不標', win.browserVoiceGender({ name: 'Chinese Taiwan' }) === '');
+
+// 試聽：沒在播放時換聲音，唸一句範例，不預先產生故事句子
+const tts19 = [];
+win.fetch = async (url, opt) => { tts19.push(JSON.parse(opt.body).input[0].content[0].text);
+  return { ok: true, status: 200, json: async () => ({ steps: [{ type: 'model_output', content: [{ type: 'audio', data: pcmB64 }] }] }) }; };
+win.document.getElementById('ttsVoice').value = 'Charon';
+win.onVoiceChange();
+await sleep(30);
+check('換聲音時試聽一句範例', eq(tts19, ['你好，我們一起來讀故事吧！']), JSON.stringify(tts19));
+check('試聽不改變播放狀態', !T.state().isPlaying && T.state().playIdx === -1);
+win.localStorage.setItem('homie_tts_engine', 'browser');
+win.renderReadingResult(BOOK, 'zh');
+spoken.length = 0;
+win.onVoiceChange();
+check('內建語音也能試聽', spoken[0] === '你好，我們一起來讀故事吧！');
+win.stopTTS();
+win.localStorage.removeItem('homie_voice_gemini');
+
 console.log(results.join('\n'));
 const pass = results.filter(r => r.startsWith('PASS')).length;
 console.log('\n' + pass + '/' + results.length + ' 通過');
