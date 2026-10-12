@@ -421,7 +421,7 @@ check('純朗讀模式只有原文', T.state().kinds.every(k => k === 'read') &&
 win.setReadMode('companion');
 check('切到陪讀但還沒產生：提示按鈕', win.document.getElementById('plNotice').textContent.includes('產生陪讀內容'));
 check('陪讀設定列顯示', win.document.getElementById('rdPlayer').classList.contains('mode-companion'));
-check('預設年級為國小低年級', win.document.getElementById('cpGrade').value === 'low');
+check('預設年級為國小低年級', win.document.getElementById('childGrade').value === 'low');
 
 aiCalls = [];
 T.stubCallAI(async (prompt, images) => { aiCalls.push({ prompt, images }); return NOTES_REPLY; });
@@ -658,6 +658,78 @@ win.onVoiceChange();
 check('內建語音也能試聽', spoken[0] === '你好，我們一起來讀故事吧！');
 win.stopTTS();
 win.localStorage.removeItem('homie_voice_gemini');
+
+// ── 20. A 階段：介面骨架 ─────────────────────────────
+const doc = win.document;
+check('金鑰設定搬進設定面板', !!doc.querySelector('#settingsSheet #apiKeyInput') && !doc.getElementById('apiBanner'));
+check('模型、年級、聲音都在設定面板', ['modelSelect', 'childGrade', 'ttsEngine', 'ttsVoice'].every(id => doc.querySelector('#settingsSheet #' + id)));
+check('科目與補充提示留在解題畫面', !!doc.querySelector('#panel-homework .subject-row') && !!doc.querySelector('#panel-homework #hwHint'));
+check('繪本不必再選中英文', !doc.querySelector('[data-group="rdLang"]'));
+check('分頁改名：檢查作業／聽故事', doc.getElementById('tab-homework').textContent.includes('檢查作業') && doc.getElementById('tab-reading').textContent.includes('聽故事'));
+check('CSS：手機版分頁列固定在底部', /\.tabs\s*\{\s*position:\s*fixed;\s*bottom:\s*0/.test(doc.querySelector('style').textContent));
+win.openSettings();
+check('打開設定面板', doc.getElementById('settingsSheet').classList.contains('show'));
+win.closeSettings();
+check('關閉設定面板', !doc.getElementById('settingsSheet').classList.contains('show'));
+
+// 金鑰提示卡
+win.localStorage.removeItem('homie_gemini_key');
+T.setProvider('gemini'); win.switchProvider('gemini', true);
+check('沒有金鑰時顯示「去設定」提示', doc.getElementById('setupCard').style.display === 'flex');
+doc.getElementById('apiKeyInput').value = 'AIza-new';
+win.saveApiKey();
+check('存了金鑰提示就消失', doc.getElementById('setupCard').style.display === 'none');
+
+// 播放器精簡：只剩播放控制、語速、陪讀模式
+win.localStorage.setItem('homie_tts_engine', 'browser');
+win.renderReadingResult(BOOK, 'zh');
+const pl = doc.getElementById('rdPlayer');
+check('播放器上沒有引擎／聲音選單', !pl.querySelector('#ttsEngine') && !pl.querySelector('#ttsVoice'));
+check('語速留在播放器上', !!pl.querySelector('[data-pl="ttsSpeed"]'));
+check('陪讀年級改用設定裡的孩子年級', !pl.querySelector('[data-pl="cpGrade"]') && !!pl.querySelector('[data-pl="cpDensity"]'));
+
+// 孩子年級套用到解題與陪讀
+doc.getElementById('childGrade').value = 'mid';
+doc.getElementById('childGrade').dispatchEvent(new win.Event('change'));
+check('年級設定會記住', win.localStorage.getItem('homie_child_grade') === 'mid');
+let gp = '';
+T.setImages(1);
+T.stubCallAI(async (prompt) => { gp = prompt; return '答案'; });
+await win.runHomework();
+check('解題 prompt 帶孩子年級', gp.includes('國小中年級學生'));
+win.setReadMode('companion');
+T.stubCallAI(async (prompt) => { gp = prompt; return '[]'; });
+await win.generateCompanion();
+check('陪讀 prompt 帶孩子年級', gp.includes('國小中年級'));
+win.setReadMode('plain');
+
+// 繪本語言自動判斷
+check('中文繪本判斷為中文', win.detectLang('===第1頁===\n小熊肚子好餓。') === 'zh');
+check('英文繪本判斷為英文（頁碼標記的中文不算）', win.detectLang('===第1頁===\nThe bear was hungry. He walked into the woods.') === 'en');
+check('中文夾少量英文仍算中文', win.detectLang('小熊說：「Hello！」然後走進森林裡找蜂蜜吃。') === 'zh');
+T.setRdImages(1);
+T.stubCallAI(async () => '===第1頁===\nThe bear was hungry.');
+spoken.length = 0;
+await win.runReading();
+win.playFrom(0);
+check('英文繪本自動用英文語音', T.utter().lang === 'en-US');
+win.stopTTS();
+
+// 從相簿分享：service worker 暫存 → 頁面讀出 → 問要做什麼
+const shareStore = new Map([[new URL('shared/0', win.location.href).href, new win.Blob(['x'], { type: 'image/jpeg' })]]);
+win.caches = {
+  open: async () => ({ match: async (u) => shareStore.has(u) ? { blob: async () => shareStore.get(u) } : undefined }),
+  delete: async () => { shareStore.clear(); return true; }
+};
+win.history.replaceState(null, '', '/homie/index.html?shared=1');
+await win.receiveShared();
+check('收到分享的照片會問要做什麼', doc.getElementById('shareSheet').classList.contains('show') && doc.getElementById('shareCount').textContent.includes('1 張'));
+check('讀完就清掉網址參數與暫存', !win.location.search && shareStore.size === 0);
+win.clearImages('rd');
+T.stubCompress(async (f) => ({ mime: f.type, dataUrl: 'data:,shared' }));
+win.useShared('rd');
+await sleep(20);
+check('選「聽故事」就切到繪本並加入照片', doc.getElementById('panel-reading').classList.contains('active') && T.rdImages().length === 1);
 
 console.log(results.join('\n'));
 const pass = results.filter(r => r.startsWith('PASS')).length;

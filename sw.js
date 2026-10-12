@@ -1,6 +1,6 @@
 // Homie 作業通 — Service Worker
 // 策略：網頁本體 network-first（避免舊版卡住）；靜態資源 cache-first；AI API 一律走網路不快取。
-const CACHE = 'homie-v0.12.2';
+const CACHE = 'homie-v0.13.0';
 const SHELL = [
   './',
   './index.html',
@@ -19,14 +19,29 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== 'homie-share').map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
+// 從相簿「分享」到 Homie（manifest 的 share_target）：收下照片暫存到 homie-share，再導回首頁讓頁面讀取
+async function handleShare(request) {
+  const form = await request.formData();
+  const files = form.getAll('photos').filter(f => f && f.size);
+  await caches.delete('homie-share');
+  const cache = await caches.open('homie-share');
+  await Promise.all(files.map((f, i) =>
+    cache.put(new URL('shared/' + i, self.registration.scope).href, new Response(f, { headers: { 'Content-Type': f.type || 'image/jpeg' } }))));
+  return Response.redirect(new URL('index.html?shared=' + files.length, self.registration.scope).href, 303);
+}
+
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+  if (e.request.method === 'POST' && url.pathname.endsWith('/share-target')) {
+    e.respondWith(handleShare(e.request));
+    return;
+  }
+  if (e.request.method !== 'GET') return;
   // AI API 請求（含串流）不經過快取
   if (/googleapis\.com|anthropic\.com|openai\.com/.test(url.hostname)) return;
 
