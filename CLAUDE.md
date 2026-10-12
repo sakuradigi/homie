@@ -14,6 +14,8 @@
 ## 發版連動
 
 - 改了 `index.html` / `about.html` 等會被快取的檔案 → **同步 bump `sw.js` 的 `CACHE` 版本字串**（如 `homie-v0.7.0`），否則舊用戶拿不到新版。
+- 版本號同時寫在三處，必須一致：`index.html` 的 `APP_VERSION`、`sw.js` 的 `CACHE`、`CHANGELOG.md` 最上面那版（`test_homie.mjs` 會檢查）。設定面板最下方會顯示版本號，方便確認手機拿到哪一版。
+- 每個版本打 Git 標籤（`vX.Y.Z`，`deploy.sh` 推送後會自動打），可用 `git checkout vX.Y.Z` 取回任一版。
 - `deploy.sh` 會在 CHANGELOG.md 未更新時擋下部署。
 
 ## 架構原則（不可違反）
@@ -32,4 +34,5 @@
 | `sw.js` / `manifest.json` | PWA |
 | `CHANGELOG.md` | 版本紀錄（每次修改必更） |
 | `OPTIMIZATION_REVIEW.md` | 2026-07-06 程式碼審查報告 |
-| `deploy.sh` | 一鍵部署（含 CHANGELOG 檢查） |
+| `deploy.sh` | 一鍵部署（含 CHANGELOG 檢查、自動打版本標籤） |
+| `test_homie.mjs` | jsdom 行為測試（`npm i --no-save jsdom dompurify fake-indexeddb && node test_homie.mjs`） |

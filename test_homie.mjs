@@ -1,9 +1,10 @@
 // Homie 作業通 — index.html 行為測試（jsdom，開發用，不影響網站本體）
-// 執行方式：npm i jsdom dompurify && node test_homie.mjs
+// 執行方式：npm i --no-save jsdom dompurify fake-indexeddb && node test_homie.mjs
 // 用途：改完 index.html 後跑一次，確認提示詞、歷史紀錄、三家 API 參數都沒被改壞
 import fs from 'fs';
 import { JSDOM } from 'jsdom';
 import createDOMPurify from 'dompurify';
+import { indexedDB as fakeIDB } from 'fake-indexeddb';
 
 const SRC = process.env.HOMIE_HTML || new URL('./index.html', import.meta.url).pathname;
 const raw = fs.readFileSync(SRC, 'utf8');
@@ -17,6 +18,7 @@ const dom = new JSDOM(html, {
 });
 const win = dom.window;
 win.DOMPurify = createDOMPurify(win);
+win.indexedDB = fakeIDB;   // 錯題本用 IndexedDB，測試時換成記憶體版
 win.marked = { parse: (t) => '<p>' + t + '</p>' };
 win.alert = (m) => { win.__alert = m; };
 win.scrollTo = () => {};
@@ -69,7 +71,8 @@ window.__T = {
   setRetry: (ms) => { TTS_RETRY_MS = ms; },
   setRdImages: (n) => { rdImages = Array.from({length:n}, () => ({ mime:'image/jpeg', dataUrl:'data:image/jpeg;base64,AAA' })); },
   notes: () => companionNotes,
-  utter: () => currentUtterance
+  utter: () => currentUtterance,
+  version: () => APP_VERSION
 };`);
 
 const T = win.__T;
@@ -95,7 +98,8 @@ T.setImages(1);
 T.stubCallAI(async (prompt) => { captured = prompt; return '## 需要訂正\n- 第3題 → <mark>8</mark>'; });
 await win.runHomework();
 check('prompt 帶入家長補充說明', captured.includes('家長補充說明：「這是童詩作業，幫忙提點」'));
-check('prompt 含「需要訂正」摘要段', captured.includes('## 需要訂正'));
+check('prompt 要求每題附結構化資料', captured.includes('"status"') && captured.includes('```json'));
+check('prompt：空白題不可以直接給答案', captured.includes('孩子沒寫（空白）：不要寫出答案'));
 check('prompt 保留 mark 標記規則', captured.includes('<mark>'));
 check('prompt 頁數正確', captured.includes('這1頁作業圖片'));
 
@@ -730,6 +734,121 @@ T.stubCompress(async (f) => ({ mime: f.type, dataUrl: 'data:,shared' }));
 win.useShared('rd');
 await sleep(20);
 check('選「聽故事」就切到繪本並加入照片', doc.getElementById('panel-reading').classList.contains('active') && T.rdImages().length === 1);
+
+// ── 21. B 階段：結果卡片、引導提示、錯題本、練習、複查 ─────
+const HW_REPLY = '## 逐題說明\n1. 第1題：正確，答案是 8。\n\n2. 第2題：正確答案是 <mark>12</mark>（不是 13）。\n\n3. 第3題：這題還沒寫，先看上面的提示自己想想看。\n\n' +
+  '```json\n{"subject":"數學","items":[' +
+  '{"no":"第1題","question":"5+3=?","status":"correct","child":"8","answer":"8","why":"","concept":"十以內的加法","hints":[]},' +
+  '{"no":"第2題","question":"7+5=?","status":"wrong","child":"13","answer":"12","why":"進位時多加了 1","concept":"二十以內的進位加法","hints":["先把 7 湊成 10"]},' +
+  '{"no":"第3題","question":"9+6=?","status":"blank","child":"","answer":"15","why":"9 先湊 10","concept":"二十以內的進位加法","hints":["9 再加幾就是 10？","10 再加剩下的 5 是多少？"]}' +
+  ']}\n```';
+check('串流時不顯示 JSON', !win.stripJsonTail(HW_REPLY).includes('"items"'));
+const split = win.splitHomework(HW_REPLY);
+check('解析出結構化資料', split.data && split.data.items.length === 3 && split.data.subject === '數學');
+check('說明部分不含 JSON', !split.md.includes('```json'));
+check('壞掉的 JSON 退回純說明', win.splitHomework('說明\n```json\n{壞掉').data === null);
+
+win.localStorage.setItem('homie_tts_engine', 'browser');
+T.setImages(1);
+T.stubCallAI(async () => HW_REPLY);
+await win.runHomework();
+await sleep(50);
+const hwBox = doc.getElementById('hwResults');
+check('摘要：幾題要訂正、幾題沒寫', hwBox.querySelector('.hw-summary').textContent === '1 題要訂正、1 題還沒寫', hwBox.querySelector('.hw-summary').textContent);
+const cards = hwBox.querySelectorAll(':scope > .mk-card');
+check('只列出要處理的題目（答對的不列）', cards.length === 2);
+check('寫錯的題目直接看到正確答案', cards[0].querySelector('.mk-ans')?.textContent === '12' && cards[0].textContent.includes('你寫：13'));
+check('沒寫的題目先不給答案', !cards[1].querySelector('.mk-ans') && !cards[1].textContent.includes('15'));
+const hintBtn = [...cards[1].querySelectorAll('.mk-btn')].find(b => b.textContent.includes('提示'));
+hintBtn.click();
+check('按一次給第一個提示', cards[1].querySelectorAll('.mk-hint').length === 1 && hintBtn.textContent.includes('再給一個提示'));
+spoken.length = 0;
+cards[1].querySelector('.mk-say').click();
+check('🔊 只唸題目和已出現的提示，不唸答案', spoken[0].includes('9+6=?') && spoken[0].includes('9 再加幾就是 10') && !spoken[0].includes('15'), spoken[0]);
+hintBtn.click();
+check('第二個提示後按鈕變成看答案', cards[1].querySelectorAll('.mk-hint').length === 2 && hintBtn.textContent.includes('看答案'));
+hintBtn.click();
+check('最後才看到答案', cards[1].querySelector('.mk-ans')?.textContent === '15');
+check('完整說明收在「看全部說明」', !!hwBox.querySelector('details.hw-full .md-body') && !hwBox.querySelector('details.hw-full').open);
+check('朗讀播放器在完整說明裡', !!hwBox.querySelector('details.hw-full #hwPlayer'));
+check('有複查按鈕', [...hwBox.querySelectorAll('button')].some(b => b.textContent.includes('拍照複查')));
+
+// 錯題本
+let mk = await win.mkAll();
+check('寫錯和沒寫的題目自動收進錯題本', mk.length === 2 && mk.every(r => r.state === 'open' && r.subject === '數學'));
+await win.refreshMkBadge();
+check('錯題本分頁顯示待練習數量', doc.getElementById('mkBadge').textContent === '2' && doc.getElementById('mkBadge').style.display !== 'none');
+const hist = JSON.parse(win.localStorage.getItem('homie_hw_history'))[0];
+check('歷史預覽不含 JSON', !hist.preview.includes('items'));
+win.restoreHistory('hw', hist);
+await sleep(30);
+check('重看歷史不會重複收錄', (await win.mkAll()).length === 2);
+
+win.switchTab('mistakes');
+await sleep(50);
+check('錯題本列出 2 題', doc.querySelectorAll('#mkList .mk-card').length === 2);
+check('錯題本統計與最常錯觀念', doc.getElementById('mkStats').textContent.includes('待練習 2 題') && doc.getElementById('mkStats').textContent.includes('二十以內的進位加法（2）'));
+check('錯題本裡的題目要先自己想（答案藏起來）', !doc.querySelector('#mkList .mk-ans'));
+const masterBtn = [...doc.querySelectorAll('#mkList .mk-btn')].find(b => b.textContent.includes('學會了'));
+masterBtn.click();
+await sleep(50);
+check('按「學會了」移到已學會', doc.querySelectorAll('#mkList .mk-card').length === 1 && (await win.mkAll()).filter(r => r.state === 'mastered').length === 1);
+doc.querySelector('#mkState [data-state="mastered"]').click();
+await sleep(50);
+check('已學會分頁看得到', doc.querySelectorAll('#mkList .mk-card').length === 1);
+doc.querySelector('#mkState [data-state="open"]').click();
+await sleep(50);
+
+// 再練 3 題
+let pp = '';
+T.stubCallAI(async (prompt) => { pp = prompt; return '[{"question":"8+5=?","answer":"13","hint":"8 先湊 10"},{"question":"6+7=?","answer":"13","hint":"7 先湊 10"},{"question":"9+4=?","answer":"13","hint":"9 先湊 10"}]'; });
+const rec = (await win.mkAll()).find(r => r.state === 'open');
+await win.openPractice(rec);
+await sleep(30);
+check('練習題依觀念與年級出題', pp.includes(rec.concept) && pp.includes('國小中年級') && pp.includes(rec.question));
+check('練習面板出現 3 題', doc.getElementById('practiceSheet').classList.contains('show') && doc.querySelectorAll('#practiceBody .mk-card').length === 3);
+check('練習題答案先藏起來', !doc.querySelector('#practiceBody .mk-ans'));
+check('錯題本記一次練習', (await win.mkAll()).find(r => r.id === rec.id).practiced === 1);
+win.closePractice();
+
+// 訂正複查
+win.switchTab('homework');
+win.restoreHistory('hw', hist);
+win.startReview();
+check('進入複查模式', doc.getElementById('hwReviewBar').style.display === 'flex' && doc.getElementById('hwReviewList').textContent === '第2題、第3題');
+check('複查按鈕文字', doc.getElementById('hwBtn').textContent.includes('開始複查'));
+T.setImages(1);
+let rp = '';
+T.stubCallAI(async (prompt) => { rp = prompt; return '[{"no":"第2題","fixed":true,"child":"12","comment":"改對了，很棒！"},{"no":"第3題","fixed":false,"child":"14","comment":"再數一次 10 加 5"}]'; });
+await win.runHomework();
+await sleep(50);
+check('複查只送上次錯的題目', rp.includes('第2題：7+5=?') && rp.includes('第3題：9+6=?') && !rp.includes('5+3=?'));
+check('複查結果摘要', hwBox.querySelector('.review-result .hw-summary').textContent.includes('1 題改對了') );
+check('還沒改對的題目附提示', hwBox.querySelector('.review-row.bad .mk-hint')?.textContent.includes('9 再加幾'));
+mk = await win.mkAll();
+check('錯題本記下訂正結果', mk.find(r => r.no === '第2題').corrected === true && mk.find(r => r.no === '第3題').corrected === false);
+check('複查完離開複查模式', doc.getElementById('hwReviewBar').style.display === 'none' && doc.getElementById('hwBtn').textContent.includes('重新解題'));
+
+// 匯出／匯入
+let dl = null;
+const realClick = win.HTMLAnchorElement.prototype.click;
+win.HTMLAnchorElement.prototype.click = function () { dl = { name: this.download, href: this.href }; };
+await win.exportMistakes();
+win.HTMLAnchorElement.prototype.click = realClick;
+const exported = JSON.parse(await blobs[dl.href].text());
+check('匯出備份檔', dl.name.startsWith('homie-錯題本-') && exported.mistakes.length === 2 && exported.version === T.version());
+win.alert = (m) => { win.__alert = m; };
+const imp = { files: [new win.File([JSON.stringify({ mistakes: [{ id: 'x-1', no: '第9題', question: '1+1=?', answer: '2', status: 'wrong', hints: [], state: 'open', ts: Date.now() }] })], 'b.json')], value: 'b.json' };
+await win.importMistakes(imp);
+check('匯入備份會合併', (await win.mkAll()).length === 3 && win.__alert.includes('匯入 1 題'));
+
+// ── 22. 版本號一致 ───────────────────────────────────
+const ver = T.version();
+const swSrc = fs.readFileSync(new URL('./sw.js', import.meta.url), 'utf8');
+const clSrc = fs.readFileSync(new URL('./CHANGELOG.md', import.meta.url), 'utf8');
+check('設定裡顯示版本號', doc.getElementById('appVersion').textContent === ver);
+check('版本號與 sw.js 快取版本一致', swSrc.includes(`'homie-${ver}'`), ver);
+check('版本號與 CHANGELOG 最新一版一致', (clSrc.match(/^## (v\d+\.\d+\.\d+)/m) || [])[1] === ver, (clSrc.match(/^## (v\d+\.\d+\.\d+)/m) || [])[1]);
 
 console.log(results.join('\n'));
 const pass = results.filter(r => r.startsWith('PASS')).length;

@@ -206,6 +206,41 @@
   .md-body code { background: #F3F4F6; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
   .md-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
   .md-body mark { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  /* 解題結果卡片：一題一張，寫錯直接看答案、沒寫先看提示 */
+  .hw-summary { border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; font-size: 17px; font-weight: 700; background: #FFF0F3; color: #9F1239; border: 1px solid #FFC9D4; }
+  .hw-summary.allgood { background: #E8F8F5; color: #0F766E; border-color: #A7E3DA; }
+  .mk-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow); }
+  .mk-card.wrong { box-shadow: inset 4px 0 0 var(--accent), var(--shadow); }
+  .mk-card.blank { box-shadow: inset 4px 0 0 #F59E0B, var(--shadow); }
+  .mk-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .mk-no { font-weight: 700; font-size: 15px; }
+  .mk-tag { font-size: 12px; border-radius: 20px; padding: 2px 8px; background: #FFF0F3; color: #BE123C; }
+  .mk-card.blank .mk-tag { background: #FFFBEB; color: #92400E; }
+  .mk-concept { font-size: 12px; border-radius: 20px; padding: 2px 8px; background: #E8F8F5; color: #0F766E; }
+  .mk-say { margin-left: auto; border: 1px solid var(--border); background: var(--card); border-radius: 50%; width: 40px; height: 40px; font-size: 18px; cursor: pointer; flex-shrink: 0; }
+  .mk-q { font-size: 16px; line-height: 1.7; margin-bottom: 4px; white-space: pre-wrap; }
+  .mk-line { font-size: 15px; margin-top: 6px; }
+  .mk-ans { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  .mk-why { font-size: 14px; color: var(--muted); margin-top: 4px; line-height: 1.7; }
+  .mk-hint { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: 14px; color: #92400E; line-height: 1.7; }
+  .mk-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .mk-top { font-size: 13px; color: var(--accent); margin-top: 4px; }
+  .mk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .mk-btn { border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 9px 12px; font-size: 14px; cursor: pointer; font-family: inherit; color: var(--text); }
+  .mk-btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .mk-btn.warm { background: #FFFBEB; border-color: #FDE68A; color: #92400E; font-weight: 600; }
+  .hw-full { margin-top: 6px; }
+  .hw-full > summary { cursor: pointer; font-weight: 600; color: var(--primary); padding: 12px 2px; list-style: none; }
+  .hw-full > summary::-webkit-details-marker { display: none; }
+  .review-bar { background: #E8F8F5; border: 1px solid #A7E3DA; border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px; align-items: center; gap: 8px; font-size: 14px; color: #0F766E; }
+  .review-bar button { margin-left: auto; background: none; border: 1px solid #A7E3DA; border-radius: 8px; padding: 6px 10px; color: #0F766E; cursor: pointer; font-family: inherit; }
+  .review-row { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; }
+  .review-row.ok { border-color: #A7E3DA; }
+  .review-row.bad { border-color: #FFC9D4; }
+  .tab-badge { display: none; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 10px; padding: 0 6px; margin-left: 4px; line-height: 16px; vertical-align: middle; }
+  .mk-stats { background: var(--card); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 12px; font-size: 14px; }
+  .set-ver { text-align: center; font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .set-ver a { color: var(--primary); }
   /* 解題結果：每一段都能點來唸給孩子聽 */
   .md-body .hw-seg { cursor: pointer; border-radius: 6px; transition: background 0.15s; }
   .md-body .hw-seg:hover { background: #FFF5F7; }
@@ -271,6 +306,8 @@
     .capture-btn { padding: 16px 12px; font-size: 16px; max-width: none; }
     .tab { padding: 6px 4px; font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
     .tab .tab-emoji { font-size: 22px; line-height: 1.2; }
+    .tab { position: relative; }
+    .tab-badge { position: absolute; top: 2px; left: 55%; margin: 0; }
     .action-btn { padding: 18px; font-size: 17px; border-radius: 16px; }
 
     /* Preview thumbnails smaller on narrow screens */
@@ -350,6 +387,9 @@
   <button class="tab" onclick="switchTab('reading')" id="tab-reading">
     <span class="tab-emoji">📖</span><span>聽故事</span>
   </button>
+  <button class="tab" onclick="switchTab('mistakes')" id="tab-mistakes">
+    <span class="tab-emoji">⭐</span><span>錯題本</span><span class="tab-badge" id="mkBadge"></span>
+  </button>
 </nav>
 
 <main>
@@ -369,6 +409,11 @@
       </button>
     </div>
     <div class="capture-hint">拍照可連續按多次累加頁面 · 或拖曳圖片至此</div>
+  </div>
+
+  <div id="hwReviewBar" class="review-bar" style="display:none">
+    <span>🔁 複查模式：拍下訂正後的 <b id="hwReviewList"></b></span>
+    <button onclick="cancelReview()">取消</button>
   </div>
 
   <div id="hwShootBar" class="shoot-more-bar" style="display:none">
@@ -461,6 +506,17 @@
   <div class="history-list" id="rdHistoryList"></div>
 </div>
 
+<!-- ===== 錯題本 ===== -->
+<div class="panel" id="panel-mistakes">
+  <div class="mk-stats" id="mkStats"></div>
+  <div class="mode-toggle" id="mkState">
+    <button class="mode-btn on" data-state="open">📝 待練習</button>
+    <button class="mode-btn" data-state="mastered">🏅 已學會</button>
+  </div>
+  <div class="subject-chips" id="mkFilters" style="margin-bottom:12px"></div>
+  <div id="mkList"></div>
+</div>
+
 </main>
 
 <!-- 設定面板：設一次就不常動的東西都放這裡 -->
@@ -512,7 +568,26 @@
     <p class="set-hint" id="ttsNote">換聲音時會唸一句範例給你聽。</p>
   </section>
 
+  <section class="set-sec">
+    <h3>⭐ 錯題本備份</h3>
+    <p class="set-hint" style="margin:0 0 8px">錯題本只存在這支手機的瀏覽器裡，清除瀏覽器資料就會消失。換手機或清資料前，先匯出備份。</p>
+    <div class="set-row">
+      <button class="mk-btn" onclick="exportMistakes()">⬇️ 匯出備份</button>
+      <button class="mk-btn" onclick="document.getElementById('mkImportInput').click()">⬆️ 匯入備份</button>
+      <input type="file" id="mkImportInput" accept="application/json,.json" class="hidden-input" onchange="importMistakes(this)">
+    </div>
+  </section>
+
   <button class="action-btn primary" onclick="closeSettings()">完成</button>
+  <p class="set-ver">Homie <span id="appVersion"></span>・<a href="https://github.com/sakuradigi/homie/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新紀錄</a></p>
+</div>
+
+<!-- 再練 3 題 -->
+<div class="sheet-bg" id="practiceBg" onclick="closePractice()"></div>
+<div class="sheet" id="practiceSheet" role="dialog" aria-label="練習題">
+  <div class="co-handle"></div>
+  <div class="sheet-head"><b>✏️ 練習題</b><button class="sheet-close" onclick="closePractice()" aria-label="關閉">✕</button></div>
+  <div id="practiceBody"></div>
 </div>
 
 <!-- 從相簿「分享」到 Homie 時，問要拿來做什麼 -->
@@ -541,6 +616,10 @@
 </div>
 
 <script>
+// ===== 版本 =====
+// 每次發版要同步：這裡、sw.js 的 CACHE、CHANGELOG.md 最上面那版（test_homie.mjs 會檢查三者一致）
+const APP_VERSION = 'v0.14.0';
+
 // ===== STATE =====
 let hwImages = [], rdImages = [];
 let selectedSubject = '';
@@ -625,8 +704,10 @@ window.onload = () => {
   }
   loadHistoryUI('hw');
   loadHistoryUI('rd');
+  refreshMkBadge();
 };
 
+document.getElementById('appVersion').textContent = APP_VERSION;
 const gradeSel = document.getElementById('childGrade');
 gradeSel.value = lsGet('homie_child_grade', 'low');
 gradeSel.addEventListener('change', () => lsSet('homie_child_grade', gradeSel.value));
@@ -711,6 +792,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'mistakes') renderMistakes();
 }
 
 // ===== DRAG & DROP =====
@@ -1069,9 +1151,10 @@ async function callOpenAI(prompt, images, key, onChunk, signal) {
 async function runHomework() {
   if (aiAbort.hw) { aiAbort.hw.abort(); return; }   // 分析中再按一次＝取消
   if (hwImages.length === 0) {
-    alert('請先上傳作業照片！');
+    alert(reviewItems ? '請先拍下訂正後的作業！' : '請先上傳作業照片！');
     return;
   }
+  if (reviewItems) return runReview();
   const btn = document.getElementById('hwBtn');
   const resultsEl = document.getElementById('hwResults');
   const ctrl = aiAbort.hw = new AbortController();
@@ -1084,17 +1167,25 @@ async function runHomework() {
   const extraHint = userHint ? `家長補充說明：「${userHint}」——請務必依照這個需求調整你的回答重點。\n` : '';
   const prompt = `你是一位親切的台灣國小老師助理，幫助家長批閱孩子的作業。
 ${subjectHint}
-${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下格式回答：
+${extraHint}請仔細看這${hwImages.length}頁作業圖片，分兩部分回答。
 
-## 需要訂正
-先用條列列出所有寫錯或空白的題目：題號 → 錯在哪裡 → 正確答案。若全部正確，就只寫「這次全對 🎉」。
-
+第一部分：逐題說明（Markdown）
 ## 逐題說明
-接著依序說明每一題：
-1. 給出正確答案，並簡短說明（一句話即可）。
-2. 計算題請給完整解題步驟。
-3. 題目看不清楚、拍不完整或缺頁，直接說明，不要臆測。
-4. 孩子寫錯的地方，請把正確答案（或需要訂正的內容）用 <mark>這個標籤</mark> 包起來，例如孩子把 5+3 算成 9，就寫成：正確答案是 <mark>8</mark>（不是 9）。孩子答對的題目維持一般文字，不要加這個標籤，只有需要訂正的地方才用。
+依序說明每一題：
+1. 孩子答對：給出答案，一句話說明即可。
+2. 孩子寫錯：說明錯在哪裡，給出正確答案；計算題要有完整解題步驟。把正確答案用 <mark>這個標籤</mark> 包起來，例如孩子把 5+3 算成 9，就寫成：正確答案是 <mark>8</mark>（不是 9）。
+3. 孩子沒寫（空白）：不要寫出答案，只寫「這題還沒寫，先看上面的提示自己想想看」。
+4. 題目看不清楚、拍不完整或缺頁，直接說明，不要臆測。
+每題之間請空一行。
+
+第二部分：最後輸出一段 JSON，用 \`\`\`json 開頭、\`\`\` 結尾，列出每一題：
+\`\`\`json
+{"subject": "科目", "items": [
+  {"no": "第3題", "question": "題目內容（簡短）", "status": "wrong", "child": "孩子寫的答案", "answer": "正確答案", "why": "一句話說明錯在哪", "concept": "這題考的觀念，例如：十以內的加法", "hints": ["第一個提示：只給方向", "第二個提示：更具體，但不能說出答案"]}
+]}
+\`\`\`
+status 只能是 correct（答對）、wrong（寫錯）、blank（沒寫）。答對的題目 hints 給空陣列。
+提示要引導孩子自己想出來，絕對不可以直接說出答案。
 
 請以繁體中文回答，格式清楚。每題之間請空一行。`;
 
@@ -1104,7 +1195,7 @@ ${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下�
     resultsEl.innerHTML = `<div class="result-card"><div class="result-page">解題結果</div><div class="md-body" id="hwLive"></div></div>`;
     const live = document.getElementById('hwLive');
     const text = await callAI(prompt, hwImages, partial => {
-      live.innerHTML = DOMPurify.sanitize(marked.parse(partial));
+      live.innerHTML = DOMPurify.sanitize(marked.parse(stripJsonTail(partial)));
     }, ctrl.signal);
     setProgress('hw', 100);
     if (text === null) { resultsEl.innerHTML = ''; return; } // 未設定 API Key，已 alert
@@ -1112,9 +1203,10 @@ ${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下�
       ? '這次沒有產出內容（模型思考用光了額度）。請減少頁數或換較快的模型再試一次。'
       : '回應為空，請再試一次');
     resultsEl.innerHTML = '';
-    renderHomeworkResult(text, userHint, lastResponseTruncated);
-    saveHistory('hw', text, null, userHint);
+    const ts = saveHistory('hw', text, null, userHint);
+    renderHomeworkResult(text, userHint, lastResponseTruncated, ts);
     loadHistoryUI('hw');
+    addMistakesFromResult(currentHw.data, ts);
   } catch (e) {
     resultsEl.innerHTML = e.name === 'AbortError'
       ? `<div class="notice-box">⏹ 已取消。照片都還在，可以調整後重新開始。</div>`
@@ -1126,8 +1218,11 @@ ${extraHint}請仔細看這${hwImages.length}頁作業圖片，並依照以下�
   }
 }
 
-function renderHomeworkResult(text, usedHint, truncated) {
+// ts：這份結果在歷史紀錄裡的時間戳（錯題本、訂正複查用來對應題目）
+function renderHomeworkResult(text, usedHint, truncated, ts) {
   const resultsEl = document.getElementById('hwResults');
+  const { md, data } = splitHomework(text);
+  currentHw = { data, ts: ts || Date.now() };
   const card = document.createElement('div');
   card.className = 'result-card';
   const head = document.createElement('div');
@@ -1143,7 +1238,7 @@ function renderHomeworkResult(text, usedHint, truncated) {
   }
   const body = document.createElement('div');
   body.className = 'md-body';
-  body.innerHTML = DOMPurify.sanitize(marked.parse(text));
+  body.innerHTML = DOMPurify.sanitize(marked.parse(md));
   card.append(head, body);
   if (truncated) {
     const notice = document.createElement('div');
@@ -1151,7 +1246,35 @@ function renderHomeworkResult(text, usedHint, truncated) {
     notice.textContent = '⚠️ 內容較長，回答可能沒有寫完。建議分批拍攝（一次 1–2 頁）再解一次。';
     card.appendChild(notice);
   }
-  resultsEl.appendChild(card);
+  // 有結構化資料：最上面是「幾題要訂正」和每題卡片，完整說明收進「看全部說明」
+  let fullBox = resultsEl;
+  if (data) {
+    const todo = data.items.filter(it => it.status !== 'correct');
+    const wrong = todo.filter(it => it.status === 'wrong').length;
+    const blank = todo.length - wrong;
+    const sum = document.createElement('div');
+    sum.className = 'hw-summary' + (todo.length ? '' : ' allgood');
+    sum.textContent = !todo.length ? `🎉 ${data.items.length} 題全對！`
+      : [wrong && `${wrong} 題要訂正`, blank && `${blank} 題還沒寫`].filter(Boolean).join('、');
+    resultsEl.appendChild(sum);
+    todo.forEach(it => resultsEl.appendChild(makeItemCard(it, 'result', [['✏️ 再練 3 題', () => openPractice({ ...it, subject: data.subject })]])));
+    if (todo.length) {
+      const rv = document.createElement('button');
+      rv.className = 'action-btn primary';
+      rv.style.margin = '4px 0 8px';
+      rv.innerHTML = '📷 訂正好了，拍照複查';
+      rv.onclick = startReview;
+      resultsEl.appendChild(rv);
+    }
+    const det = document.createElement('details');
+    det.className = 'hw-full';
+    const summ = document.createElement('summary');
+    summ.textContent = '📖 看全部說明（也可以唸給孩子聽）';
+    det.appendChild(summ);
+    resultsEl.appendChild(det);
+    fullBox = det;
+  }
+  fullBox.appendChild(card);
 
   // 唸給孩子聽：每個段落／條列一段，點哪段就從哪段唸
   activatePlayer('hw');
@@ -1160,7 +1283,8 @@ function renderHomeworkResult(text, usedHint, truncated) {
   companionNotes = null;
   currentSegments = collectSpeakBlocks(body);
   if (currentSegments.length) {
-    resultsEl.prepend(buildPlayer('hw'));
+    if (fullBox === resultsEl) resultsEl.prepend(buildPlayer('hw'));
+    else fullBox.insertBefore(buildPlayer('hw'), card);
     syncPlayerPrefs();
   }
   buildPlaylist();
@@ -1172,6 +1296,468 @@ function renderHomeworkResult(text, usedHint, truncated) {
   btn.innerHTML = '🔄 新題目（清除照片重新開始）';
   btn.onclick = () => resetPanel('hw');
   resultsEl.appendChild(btn);
+}
+
+// ===== 解題結果：結構化資料 =====
+// AI 先寫逐題說明（Markdown，串流即時顯示），最後附一段 ```json 列出每題狀態，給卡片、引導提示、錯題本用。
+// 舊的歷史紀錄沒有 JSON，照舊只顯示說明。
+function splitHomework(text) {
+  const t = String(text || '');
+  const i = t.lastIndexOf('```json');
+  if (i < 0) return { md: t, data: null };
+  const rest = t.slice(i + 7);
+  const end = rest.indexOf('```');
+  let data = null;
+  try { data = normalizeHwData(JSON.parse(end >= 0 ? rest.slice(0, end) : rest)); } catch (e) {}
+  return { md: t.slice(0, i).trim(), data };
+}
+
+// 串流中：JSON 那段還沒寫完，先不顯示
+function stripJsonTail(text) {
+  const i = text.indexOf('```json');
+  return i < 0 ? text : text.slice(0, i);
+}
+
+// AI 回的資料一律整理、截長，避免缺欄位或超長內容把畫面弄壞
+function normalizeHwData(d) {
+  if (!d || !Array.isArray(d.items)) return null;
+  const str = (v, n) => (v == null ? '' : String(v)).trim().slice(0, n);
+  return {
+    subject: str(d.subject, 20),
+    items: d.items.filter(x => x && typeof x === 'object').map(x => ({
+      no: str(x.no, 30),
+      question: str(x.question, 300),
+      status: ['correct', 'wrong', 'blank'].includes(x.status) ? x.status : 'correct',
+      child: str(x.child, 200),
+      answer: str(x.answer, 300),
+      why: str(x.why, 400),
+      concept: str(x.concept, 60),
+      hints: (Array.isArray(x.hints) ? x.hints : []).map(h => str(h, 300)).filter(Boolean).slice(0, 3)
+    }))
+  };
+}
+
+let currentHw = null;   // 目前畫面上的解題結果 { data, ts }：訂正複查、錯題本要用
+
+// 一題一張卡片。mode：'result' 解題結果（寫錯直接看答案、沒寫要先看提示）／'book' 錯題本（一律先自己想再看答案）
+function makeItemCard(item, mode, actions) {
+  const guided = mode === 'book' || item.status === 'blank';
+  const card = document.createElement('div');
+  card.className = 'mk-card ' + (item.status === 'blank' ? 'blank' : 'wrong');
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  const head = el('div', 'mk-head');
+  head.append(el('span', 'mk-no', item.no || '題目'),
+    el('span', 'mk-tag', item.status === 'blank' ? '還沒寫' : '要訂正'));
+  if (item.concept) head.append(el('span', 'mk-concept', item.concept));
+  const say = el('button', 'mk-say', '🔊');
+  say.setAttribute('aria-label', '唸給我聽');
+  head.append(say);
+  card.append(head);
+  if (item.question) card.append(el('div', 'mk-q', item.question));
+
+  const hintBox = el('div');
+  const answerBox = el('div');
+  card.append(hintBox, answerBox);
+  let shownHints = 0, answerShown = false;
+
+  const showAnswer = () => {
+    answerShown = true;
+    answerBox.innerHTML = '';
+    const line = el('div', 'mk-line');
+    if (item.child && item.status === 'wrong') line.append(`你寫：${item.child} → 正確：`);
+    else line.append('答案：');
+    line.append(el('span', 'mk-ans', item.answer || '（沒有提供）'));
+    answerBox.append(line);
+    if (item.why) answerBox.append(el('div', 'mk-why', item.why));
+  };
+
+  const acts = el('div', 'mk-actions');
+  if (guided) {
+    const next = el('button', 'mk-btn warm');
+    const label = () => {
+      if (shownHints < item.hints.length) next.textContent = shownHints ? '💡 再給一個提示' : '💡 給我提示';
+      else next.textContent = '👀 看答案';
+    };
+    next.onclick = () => {
+      if (shownHints < item.hints.length) {
+        hintBox.append(el('div', 'mk-hint', `提示 ${shownHints + 1}：${item.hints[shownHints]}`));
+        shownHints++;
+        label();
+      } else {
+        showAnswer();
+        next.remove();
+      }
+    };
+    label();
+    acts.append(next);
+  } else {
+    showAnswer();
+  }
+
+  say.onclick = () => {
+    const parts = [item.no, item.question];
+    if (guided && !answerShown) {
+      parts.push(...item.hints.slice(0, shownHints));
+      if (!shownHints) parts.push('先自己想一想，需要的話按「給我提示」。');
+    } else {
+      if (item.status === 'wrong' && item.child) parts.push(`你寫的是 ${item.child}`);
+      parts.push(`正確答案是 ${item.answer}`, item.why);
+    }
+    sayText(parts.filter(Boolean).join('。'));
+  };
+
+  (actions || []).forEach(([text, fn, cls]) => {
+    const b = el('button', 'mk-btn' + (cls ? ' ' + cls : ''), text);
+    b.onclick = () => fn(card);
+    acts.append(b);
+  });
+  card.append(acts);
+  return card;
+}
+
+// 卡片上的 🔊：停下目前在唸的，唸這一段
+function sayText(text) {
+  pausePlayback();
+  const session = ++playSession;
+  if (activeEngine() !== 'browser') unlockAudio();
+  speakItem({ kind: 'card', text: speakableText(text) }, session, () => {});
+}
+
+// ===== 錯題本儲存（IndexedDB：瀏覽器內建資料庫，資料只在這支手機上）=====
+const MK_LS = 'homie_mistakes';   // 沒有 IndexedDB 的瀏覽器退回 localStorage
+let mkDbPromise = null;
+function mkDb() {
+  if (!window.indexedDB) return Promise.reject(new Error('no indexedDB'));
+  if (!mkDbPromise) mkDbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open('homie', 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains('mistakes')) req.result.createObjectStore('mistakes', { keyPath: 'id' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return mkDbPromise;
+}
+function mkTx(mode, fn) {
+  return mkDb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction('mistakes', mode);
+    const out = fn(tx.objectStore('mistakes'));
+    tx.oncomplete = () => resolve(out && 'result' in out ? out.result : undefined);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+function mkLsRead() { try { return JSON.parse(localStorage.getItem(MK_LS) || '[]'); } catch (e) { return []; } }
+async function mkAll() {
+  try { return (await mkTx('readonly', s => s.getAll())) || []; } catch (e) { return mkLsRead(); }
+}
+async function mkPut(records) {
+  try { await mkTx('readwrite', s => { records.forEach(r => s.put(r)); }); }
+  catch (e) {
+    const map = new Map(mkLsRead().map(r => [r.id, r]));
+    records.forEach(r => map.set(r.id, r));
+    lsSet(MK_LS, JSON.stringify([...map.values()]));
+  }
+  refreshMkBadge();
+}
+async function mkDelete(id) {
+  try { await mkTx('readwrite', s => { s.delete(id); }); }
+  catch (e) { lsSet(MK_LS, JSON.stringify(mkLsRead().filter(r => r.id !== id))); }
+  refreshMkBadge();
+}
+
+// 新的解題結果：寫錯和沒寫的題目收進錯題本（id = 那次結果的時間 + 題目序號，重看歷史不會重複收）
+async function addMistakesFromResult(data, ts) {
+  if (!data) return;
+  const records = data.items.map((it, i) => ({ ...it, id: `${ts}-${i}` }))
+    .filter(it => it.status !== 'correct')
+    .map(it => ({ ...it, ts, subject: data.subject || selectedSubject || '作業', state: 'open', practiced: 0, corrected: null }));
+  if (records.length) await mkPut(records);
+}
+
+async function refreshMkBadge() {
+  const badge = document.getElementById('mkBadge');
+  if (!badge) return;
+  const n = (await mkAll()).filter(r => r.state === 'open').length;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.style.display = n ? 'inline-block' : 'none';
+}
+
+// ===== 錯題本分頁 =====
+let mkFilter = { subject: '全部', state: 'open' };
+async function renderMistakes() {
+  const box = document.getElementById('mkList');
+  if (!box) return;
+  const all = (await mkAll()).sort((a, b) => b.ts - a.ts);
+  const statsEl = document.getElementById('mkStats');
+  const weekAgo = Date.now() - 7 * 864e5;
+  const week = all.filter(r => r.ts > weekAgo);
+  const counts = {};
+  all.filter(r => r.state === 'open' && r.concept).forEach(r => { counts[r.concept] = (counts[r.concept] || 0) + 1; });
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  statsEl.innerHTML = '';
+  const line1 = document.createElement('div');
+  line1.textContent = `這週新增 ${week.length} 題・待練習 ${all.filter(r => r.state === 'open').length} 題・已學會 ${all.filter(r => r.state === 'mastered').length} 題`;
+  statsEl.append(line1);
+  if (top.length) {
+    const line2 = document.createElement('div');
+    line2.className = 'mk-top';
+    line2.textContent = '最常錯：' + top.map(([c, n]) => `${c}（${n}）`).join('、');
+    statsEl.append(line2);
+  }
+
+  // 篩選：科目 × 待練習／已學會
+  const chips = document.getElementById('mkFilters');
+  chips.innerHTML = '';
+  const subjects = ['全部', ...new Set(all.map(r => r.subject).filter(Boolean))];
+  if (!subjects.includes(mkFilter.subject)) mkFilter.subject = '全部';
+  subjects.forEach(sub => {
+    const c = document.createElement('button');
+    c.className = 'subject-chip' + (sub === mkFilter.subject ? ' selected' : '');
+    c.textContent = sub;
+    c.onclick = () => { mkFilter.subject = sub; renderMistakes(); };
+    chips.append(c);
+  });
+  document.querySelectorAll('#mkState .mode-btn').forEach(b => {
+    b.classList.toggle('on', b.dataset.state === mkFilter.state);
+    b.onclick = () => { mkFilter.state = b.dataset.state; renderMistakes(); };
+  });
+
+  const list = all.filter(r => r.state === mkFilter.state && (mkFilter.subject === '全部' || r.subject === mkFilter.subject));
+  box.innerHTML = '';
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = mkFilter.state === 'open'
+      ? '<div class="big-emoji">🌟</div>這裡會自動收集寫錯和沒寫的題目。<br>檢查完作業就會出現。'
+      : '<div class="big-emoji">🏅</div>按「學會了」的題目會收在這裡。';
+    box.append(empty);
+    return;
+  }
+  list.forEach(r => {
+    const d = new Date(r.ts);
+    const card = makeItemCard(r, 'book', [
+      ['✏️ 再練 3 題', () => openPractice(r)],
+      r.state === 'open'
+        ? ['✅ 學會了', async () => { await mkPut([{ ...r, state: 'mastered' }]); renderMistakes(); }, 'primary']
+        : ['↩ 再練習', async () => { await mkPut([{ ...r, state: 'open' }]); renderMistakes(); }],
+      ['🗑', async () => { if (confirm('從錯題本刪除這題？')) { await mkDelete(r.id); renderMistakes(); } }]
+    ]);
+    const meta = document.createElement('div');
+    meta.className = 'mk-meta';
+    meta.textContent = `${d.getMonth() + 1}/${d.getDate()}・${r.subject}` +
+      (r.practiced ? `・練習過 ${r.practiced} 次` : '') +
+      (r.corrected === true ? '・已訂正 ✓' : r.corrected === false ? '・訂正還沒對' : '');
+    card.insertBefore(meta, card.children[1]);
+    box.append(card);
+  });
+}
+
+// ===== 再練 3 題 =====
+let practiceSource = null;
+async function openPractice(item) {
+  practiceSource = item;
+  const body = document.getElementById('practiceBody');
+  body.innerHTML = '<div class="empty-state"><div class="spinner" style="border-color:rgba(13,148,136,0.25);border-top-color:var(--primary);margin:0 auto 12px"></div>正在出題…</div>';
+  document.getElementById('practiceSheet').classList.add('show');
+  document.getElementById('practiceBg').classList.add('show');
+  const prompt = `你是一位台灣國小老師。孩子是${GRADE_LABEL[getChildGrade()]}學生，這題做錯或不會：
+題目：${item.question || item.no}
+正確答案：${item.answer}
+考的觀念：${item.concept || '（未提供）'}
+科目：${item.subject || '（未提供）'}
+
+請出 3 題考同一個觀念、難度相近的練習題（數字、人物或情境要換，不要和原題一樣），適合孩子在紙上作答。
+每題附一個提示（只給方向，不說答案）。一律使用繁體中文與台灣用語。
+只輸出 JSON 陣列，不要加任何說明：
+[{"question": "題目", "answer": "答案", "hint": "提示"}]`;
+  try {
+    const text = await callAI(prompt, [], null);
+    if (text === null) { closePractice(); return; }
+    const m = String(text).match(/\[[\s\S]*\]/);
+    const arr = m ? JSON.parse(m[0]) : null;
+    if (!Array.isArray(arr) || !arr.length) throw new Error('出題失敗，請再試一次');
+    renderPractice(arr.slice(0, 5).map(x => ({
+      no: '', question: String(x.question || '').slice(0, 300), answer: String(x.answer || '').slice(0, 300),
+      why: '', concept: '', status: 'blank', hints: x.hint ? [String(x.hint).slice(0, 300)] : []
+    })).filter(x => x.question));
+    if (item.id && item.ts) {   // 錯題本裡的題目記一次練習
+      const rec = (await mkAll()).find(r => r.id === item.id);
+      if (rec) await mkPut([{ ...rec, practiced: (rec.practiced || 0) + 1 }]);
+    }
+  } catch (e) {
+    body.innerHTML = '';
+    const err = document.createElement('div');
+    err.className = 'error-box';
+    err.textContent = '❌ ' + e.message;
+    body.append(err);
+  }
+}
+
+function renderPractice(items) {
+  const body = document.getElementById('practiceBody');
+  body.innerHTML = '';
+  const src = document.createElement('div');
+  src.className = 'mk-meta';
+  src.textContent = `練習觀念：${practiceSource.concept || practiceSource.question || ''}・寫在紙上，寫完再看答案`;
+  body.append(src);
+  items.forEach((it, i) => body.append(makeItemCard({ ...it, no: `第 ${i + 1} 題` }, 'book')));
+  const row = document.createElement('div');
+  row.className = 'mk-actions';
+  const again = document.createElement('button');
+  again.className = 'mk-btn';
+  again.textContent = '🔄 再出 3 題';
+  again.onclick = () => openPractice(practiceSource);
+  const done = document.createElement('button');
+  done.className = 'mk-btn primary';
+  done.textContent = '完成';
+  done.onclick = closePractice;
+  row.append(again, done);
+  body.append(row);
+}
+
+function closePractice() {
+  stopTTS();
+  document.getElementById('practiceSheet').classList.remove('show');
+  document.getElementById('practiceBg').classList.remove('show');
+}
+
+// ===== 訂正複查：孩子訂正後再拍一次，只檢查上次錯的題目 =====
+let reviewItems = null;
+function startReview() {
+  if (!currentHw || !currentHw.data) return;
+  reviewItems = currentHw.data.items.map((it, i) => ({ ...it, id: `${currentHw.ts}-${i}` })).filter(it => it.status !== 'correct');
+  if (!reviewItems.length) { reviewItems = null; return; }
+  clearImages('hw');
+  const bar = document.getElementById('hwReviewBar');
+  document.getElementById('hwReviewList').textContent = reviewItems.map(it => it.no).join('、');
+  bar.style.display = 'flex';
+  setHwBtn();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('hwCameraInput').click();
+}
+
+function cancelReview() {
+  reviewItems = null;
+  document.getElementById('hwReviewBar').style.display = 'none';
+  setHwBtn();
+}
+
+function setHwBtn() {
+  const btn = document.getElementById('hwBtn');
+  if (reviewItems) btn.innerHTML = '<span>🔁</span> <span>開始複查</span>';
+  else btn.innerHTML = `<span>🔍</span> <span>${document.getElementById('hwResults').children.length ? '重新解題' : '開始解題'}</span>`;
+}
+
+async function runReview() {
+  const btn = document.getElementById('hwBtn');
+  const resultsEl = document.getElementById('hwResults');
+  const ctrl = aiAbort.hw = new AbortController();
+  btn.innerHTML = '<div class="spinner"></div> <span>複查中…（再按一次取消）</span>';
+  showProgress('hw');
+  const items = reviewItems;
+  const list = items.map((it, i) => `${i + 1}. ${it.no}：${it.question}（正確答案：${it.answer}）`).join('\n');
+  const prompt = `你是一位親切的台灣國小老師助理。孩子訂正了上次寫錯或沒寫的題目，上次的題目如下：
+${list}
+
+請看這${hwImages.length}頁照片，逐題判斷孩子這次寫的是否正確。
+只輸出 JSON 陣列，不要加任何說明：
+[{"no": "題號", "fixed": true, "child": "孩子這次寫的答案", "comment": "一句話：改對了就鼓勵，還不對就提醒方向但不要直接說答案"}]
+照片裡找不到的題目，fixed 填 null，comment 寫「照片裡沒看到這題」。`;
+  try {
+    setProgress('hw', 30);
+    const text = await callAI(prompt, hwImages, null, ctrl.signal);
+    setProgress('hw', 100);
+    if (text === null) return;
+    const m = String(text).match(/\[[\s\S]*\]/);
+    let rows = null;
+    try { rows = m && JSON.parse(m[0]); } catch (e) {}
+    if (!Array.isArray(rows)) throw new Error('複查結果格式不對，請再試一次');
+    // 依題號對回上次的題目；對不到就照順序
+    const results = items.map((it, i) => {
+      const r = rows.find(x => x && String(x.no || '').trim() === it.no) || rows[i] || {};
+      return { item: it, fixed: r.fixed === true ? true : r.fixed === false ? false : null,
+               child: String(r.child || '').slice(0, 200), comment: String(r.comment || '').slice(0, 300) };
+    });
+    renderReviewResult(results);
+    const recs = await mkAll();
+    const updates = results.filter(r => r.fixed !== null).map(r => {
+      const rec = recs.find(x => x.id === r.item.id);
+      return rec ? { ...rec, corrected: r.fixed } : null;
+    }).filter(Boolean);
+    if (updates.length) await mkPut(updates);
+    reviewItems = null;
+    document.getElementById('hwReviewBar').style.display = 'none';
+  } catch (e) {
+    const box = document.createElement('div');
+    box.className = e.name === 'AbortError' ? 'notice-box' : 'error-box';
+    box.textContent = e.name === 'AbortError' ? '⏹ 已取消複查。' : '❌ ' + e.message;
+    resultsEl.prepend(box);
+  } finally {
+    aiAbort.hw = null;
+    hideProgress('hw');
+    setHwBtn();
+  }
+}
+
+function renderReviewResult(results) {
+  const resultsEl = document.getElementById('hwResults');
+  const wrap = document.createElement('div');
+  wrap.className = 'review-result';
+  const ok = results.filter(r => r.fixed === true).length;
+  const bad = results.filter(r => r.fixed === false).length;
+  const sum = document.createElement('div');
+  sum.className = 'hw-summary' + (bad ? '' : ' allgood');
+  sum.textContent = bad ? `✅ ${ok} 題改對了，還有 ${bad} 題要再想想` : `🎉 ${ok} 題都改對了！`;
+  wrap.append(sum);
+  results.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'review-row ' + (r.fixed === true ? 'ok' : r.fixed === false ? 'bad' : 'unk');
+    const title = document.createElement('div');
+    title.className = 'mk-no';
+    title.textContent = `${r.fixed === true ? '✅' : r.fixed === false ? '❌' : '❔'} ${r.item.no}`;
+    const c = document.createElement('div');
+    c.className = 'mk-why';
+    c.textContent = (r.child ? `這次寫：${r.child}　` : '') + r.comment;
+    row.append(title, c);
+    if (r.fixed === false && r.item.hints.length) {
+      const h = document.createElement('div');
+      h.className = 'mk-hint';
+      h.textContent = '提示：' + r.item.hints[0];
+      row.append(h);
+    }
+    wrap.append(row);
+  });
+  resultsEl.prepend(wrap);
+  sum.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ===== 錯題本備份（匯出／匯入 JSON 檔）=====
+async function exportMistakes() {
+  const all = await mkAll();
+  const blob = new Blob([JSON.stringify({ app: 'homie', version: APP_VERSION, exported: new Date().toISOString(), mistakes: all }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  a.download = `homie-錯題本-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function importMistakes(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const list = (Array.isArray(data) ? data : data.mistakes || []).filter(r => r && r.id && (r.question || r.no));
+    if (!list.length) throw new Error('檔案裡沒有錯題');
+    await mkPut(list);
+    alert(`已匯入 ${list.length} 題`);
+    renderMistakes();
+  } catch (e) {
+    alert('匯入失敗：' + (e.message || '檔案格式不對'));
+  }
 }
 
 // 從渲染好的 markdown 取出要唸的段落：只取最內層的區塊（<li><p> 只唸 <p>），避免重複唸
@@ -2136,7 +2722,7 @@ function resetPanel(prefix) {
   document.getElementById(prefix + 'Results').innerHTML = '';
   document.getElementById(prefix === 'hw' ? 'panel-homework' : 'panel-reading').classList.remove('has-result');
   // 「新題目」= 全新一份作業，順手清掉上一份的補充提示，避免它悄悄套用到下一份
-  if (prefix === 'hw') clearHint();
+  if (prefix === 'hw') { clearHint(); cancelReview(); currentHw = null; }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -2169,7 +2755,7 @@ function saveHistory(prefix, text, readLang, hint) {
     ts,
     subject: prefix === 'hw' ? (selectedSubject || '作業') : '繪本',
     // 去掉 markdown 與 HTML 標籤，預覽才不會出現 <mark> 這種字樣
-    preview: text.replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80),
+    preview: stripJsonTail(text).replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80),
     full: text,
     readLang: readLang || null,
     hint: hint || null
@@ -2215,7 +2801,7 @@ function restoreHistory(prefix, item) {
   const resultsEl = document.getElementById(prefix + 'Results');
   resultsEl.innerHTML = '';
   if (prefix === 'hw') {
-    renderHomeworkResult(item.full, item.hint, false);
+    renderHomeworkResult(item.full, item.hint, false, item.ts);
   } else {
     currentRdHistoryTs = item.ts;
     renderReadingResult(item.full, item.readLang || 'zh', item.companion);

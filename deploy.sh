@@ -22,6 +22,11 @@ git add .
 git commit -m "$MSG" || exit 1
 
 if git push; then
+  # 依 index.html 的 APP_VERSION 打版本標籤（已存在就略過），之後可用 git checkout vX.Y.Z 取回這一版
+  VER=$(grep -o "APP_VERSION = 'v[0-9.]*'" index.html | grep -o "v[0-9.]*")
+  if [ -n "$VER" ] && ! git rev-parse -q --verify "refs/tags/$VER" >/dev/null; then
+    git tag -a "$VER" -m "$VER $MSG" && git push -q origin "$VER" && echo "🏷️  已標記版本 $VER"
+  fi
   echo ""
   echo "✅ 已推上 GitHub！"
   echo "🌐 網站約 60 秒後更新：https://sakuradigi.github.io/homie"
