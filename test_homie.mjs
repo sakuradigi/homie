@@ -72,7 +72,9 @@ window.__T = {
   setRdImages: (n) => { rdImages = Array.from({length:n}, () => ({ mime:'image/jpeg', dataUrl:'data:image/jpeg;base64,AAA' })); },
   notes: () => companionNotes,
   utter: () => currentUtterance,
-  version: () => APP_VERSION
+  version: () => APP_VERSION,
+  lastCost: () => lastCost,
+  wordMode: () => wordMode
 };`);
 
 const T = win.__T;
@@ -841,6 +843,105 @@ win.alert = (m) => { win.__alert = m; };
 const imp = { files: [new win.File([JSON.stringify({ mistakes: [{ id: 'x-1', no: '第9題', question: '1+1=?', answer: '2', status: 'wrong', hints: [], state: 'open', ts: Date.now() }] })], 'b.json')], value: 'b.json' };
 await win.importMistakes(imp);
 check('匯入備份會合併', (await win.mkAll()).length === 3 && win.__alert.includes('匯入 1 題'));
+
+// ── 23. C 階段：照片編輯、縮圖、花費、分享、查單字 ─────
+const nr = win.normRect({ x: 300, y: 50 }, { x: 100, y: 500 }, 400, 400);
+check('裁切範圍：兩點拉出長方形並夾在圖片內', nr.x === 100 && nr.y === 50 && nr.w === 200 && nr.h === 350, JSON.stringify(nr));
+win.clearImages('hw');
+T.stubCompress(async () => ({ mime: 'image/jpeg', dataUrl: 'data:,a' }));
+await win.addImages([{ name: 'a' }], 'hw');
+check('預覽縮圖有「調整」按鈕', !!doc.querySelector('#hwPreview .edit-btn'));
+
+// 花費：Gemini 用量
+win.localStorage.removeItem('homie_usage');
+win.localStorage.setItem('homie_gemini_key', 'AIza-test');
+T.setProvider('gemini'); win.switchProvider('gemini', true);
+win.fetch = async () => sse('{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":2000,"candidatesTokenCount":500,"thoughtsTokenCount":500}}');
+await T.callReal('p', [], null);
+const gCost = (2000 * 0.75 + 1000 * 3.75) / 1e6;
+check('Gemini：依用量（含思考 token）算花費', Math.abs(T.lastCost() - gCost) < 1e-12, String(T.lastCost()));
+let usage = JSON.parse(win.localStorage.getItem('homie_usage'));
+const mk1 = Object.keys(usage)[0];
+check('記入本月花費與次數', usage[mk1].calls === 1 && Math.abs(usage[mk1].usd - gCost) < 1e-12);
+// Claude 用量
+win.localStorage.setItem('homie_claude_key', 'sk-ant-test');
+T.setProvider('claude'); win.switchProvider('claude', true);
+win.fetch = async () => sseMulti([
+  { type: 'message_start', message: { usage: { input_tokens: 1000, output_tokens: 1 } } },
+  { type: 'content_block_delta', delta: { type: 'text_delta', text: 'OK' } },
+  { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 400 } }
+]);
+await T.callReal('p', [], null);
+check('Claude：讀 message_start／message_delta 的用量', Math.abs(T.lastCost() - (1000 * 1 + 400 * 5) / 1e6) < 1e-12, String(T.lastCost()));
+// OpenAI 用量
+win.localStorage.setItem('homie_openai_key', 'sk-test');
+T.setProvider('openai'); win.switchProvider('openai', true);
+let oaBody = null;
+win.fetch = async (url, opt) => { oaBody = JSON.parse(opt.body); return sseMulti([
+  { choices: [{ delta: { content: 'OK' } }] },
+  { choices: [], usage: { prompt_tokens: 3000, completion_tokens: 600 } }
+]); };
+await T.callReal('p', [], null);
+check('OpenAI：要求串流附上用量', oaBody.stream_options && oaBody.stream_options.include_usage === true);
+check('OpenAI：依用量算花費', Math.abs(T.lastCost() - (3000 * 1 + 600 * 6) / 1e6) < 1e-12, String(T.lastCost()));
+usage = JSON.parse(win.localStorage.getItem('homie_usage'));
+check('本月累計 3 次', usage[mk1].calls === 3);
+win.renderUsage();
+check('設定裡顯示本月花費', doc.getElementById('usageText').textContent.includes('本月約 NT$') && doc.getElementById('usageText').textContent.includes('3 次'));
+check('台幣顯示格式', win.fmtTwd(0.0016) === 'NT$0.05' && win.fmtTwd(0.2) === 'NT$6.4' && win.fmtTwd(1) === 'NT$32');
+T.setProvider('gemini'); win.switchProvider('gemini', true);
+
+// 解題結果顯示這次花費、分享按鈕
+win.localStorage.setItem('homie_tts_engine', 'browser');
+T.setImages(1);
+T.stubCallAI(async () => HW_REPLY);
+await win.runHomework();
+await sleep(30);
+check('解題結果有分享按鈕', [...doc.querySelectorAll('#hwResults .mk-btn')].some(b => b.textContent.includes('分享結果')));
+const sl = win.shareLines(win.splitHomework(HW_REPLY).data, new Date(2026, 9, 12).getTime());
+check('分享圖片內容：日期科目、摘要、每題答案', sl[0].t === '2026/10/12・數學' && sl[1].t.includes('1 題要訂正') &&
+  sl.some(l => l.t === '孩子寫：13 → 正確：12') && sl.some(l => l.t === '答案：15') && !sl.some(l => l.t.includes('5+3')));
+const fakeCtx = { measureText: (t) => ({ width: [...t].length * 10 }) };
+const wl = win.wrapText(fakeCtx, '這是一段很長很長的中文說明文字', 60);
+check('分享圖片中文折行', wl.length === 3 && wl.every(l => [...l].length <= 6), JSON.stringify(wl));
+const we = win.wrapText(fakeCtx, 'The bear walked home', 110);
+check('分享圖片英文不拆單字', we.every(l => !/^[a-z]/.test(l) || l.split(' ').every(w => 'The bear walked home'.includes(w))), JSON.stringify(we));
+
+// 歷史縮圖與上限 30
+await win.dbTx('thumbs', 'readwrite', st => { st.put({ ts: 111, thumb: 'data:image/jpeg;base64,THUMB', pages: 1 }); });
+win.localStorage.setItem('homie_rd_history', JSON.stringify([{ ts: 111, subject: '繪本', preview: '小熊', full: '===第1頁===\n小熊。', readLang: 'zh' }]));
+win.loadHistoryUI('rd');
+await sleep(30);
+check('歷史紀錄顯示縮圖', doc.querySelector('#rdHistoryList .h-thumb')?.getAttribute('src') === 'data:image/jpeg;base64,THUMB');
+const many = Array.from({ length: 30 }, (_, i) => ({ ts: 1029 - i, subject: '數學', preview: 'x', full: 'x' }));
+win.localStorage.setItem('homie_hw_history', JSON.stringify(many));
+await win.dbTx('thumbs', 'readwrite', st => { st.put({ ts: 1000, thumb: 'data:,old' }); });
+win.saveHistory('hw', '新的一筆', null, '');
+await sleep(30);
+const hh = JSON.parse(win.localStorage.getItem('homie_hw_history'));
+check('超過 30 筆時擠掉最舊的', hh.length === 30 && !hh.some(x => x.ts === 1000));
+check('被擠掉的紀錄縮圖一起刪', !(await win.getThumb(1000)));
+
+// 英文繪本查單字
+check('取出點到的單字', win.wordAt('The bear was brave.', 14) === 'brave' && win.wordAt('The bear was brave.', 18) === 'brave');
+check('撇號單字保留、標點去掉', win.wordAt('"Don\'t go!" he said.', 3) === "Don't");
+check('點到空白或標點不算', win.wordAt('Hi , you', 3) === '');
+win.renderReadingResult('===Page 1===\nThe bear was brave.', 'en');
+check('英文繪本才有查單字按鈕', !!doc.querySelector('#rdPlayer [data-pl="wordBtn"]'));
+win.toggleWordMode();
+check('打開查單字模式', T.wordMode() && doc.getElementById('rdResults').classList.contains('word-mode'));
+let wq = 0;
+T.stubCallAI(async (prompt) => { wq++; return '{"zh":"勇敢的","pos":"形容詞","note":"小熊很勇敢，不害怕"}'; });
+spoken.length = 0;
+await win.lookupWord('brave', 'The bear was brave.');
+check('單字面板顯示中文意思與詞性', doc.getElementById('wordSheet').classList.contains('show') && doc.querySelector('#wordBody .word-zh').textContent === '勇敢的' && doc.getElementById('wordBody').textContent.includes('形容詞'));
+check('查單字會唸出單字（英文語音）', spoken.includes('brave') && T.utter().lang === 'en-US');
+win.closeWord();
+await win.lookupWord('Brave', 'Another sentence.');
+check('同一個字第二次查用快取', wq === 1);
+win.toggleWordMode();
+win.renderReadingResult(BOOK, 'zh');
+check('中文繪本沒有查單字按鈕', !doc.querySelector('#rdPlayer [data-pl="wordBtn"]'));
 
 // ── 22. 版本號一致 ───────────────────────────────────
 const ver = T.version();

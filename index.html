@@ -239,6 +239,16 @@
   .review-row.bad { border-color: #FFC9D4; }
   .tab-badge { display: none; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; border-radius: 10px; padding: 0 6px; margin-left: 4px; line-height: 16px; vertical-align: middle; }
   .mk-stats { background: var(--card); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 12px; font-size: 14px; }
+  .cost-note { font-size: 12px; color: var(--muted); text-align: right; margin-top: 8px; }
+  .edit-stage { display: flex; justify-content: center; background: #111827; border-radius: 12px; padding: 8px; margin: 8px 0; }
+  #editCanvas { touch-action: none; max-width: 100%; border-radius: 6px; }
+  .preview-item .edit-btn { position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 6px; font-size: 12px; padding: 2px 6px; cursor: pointer; }
+  .history-item { display: flex; gap: 10px; align-items: center; }
+  .history-item .h-text { flex: 1; min-width: 0; }
+  .h-thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #F3F4F6; flex-shrink: 0; }
+  .word-btn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .word-zh { font-size: 28px; font-weight: 700; color: var(--primary-dark); margin: 4px 0 8px; }
+  #rdResults.word-mode .para-segment { text-decoration: underline dotted #0D9488; text-underline-offset: 4px; }
   .set-ver { text-align: center; font-size: 12px; color: var(--muted); margin-top: 14px; }
   .set-ver a { color: var(--primary); }
   /* 解題結果：每一段都能點來唸給孩子聽 */
@@ -569,6 +579,12 @@
   </section>
 
   <section class="set-sec">
+    <h3>💰 花費</h3>
+    <div id="usageText" style="font-size:15px"></div>
+    <p class="set-hint">依 API 回傳的用量和公告單價估算（匯率以 32 計），不含 AI 語音；實際金額以供應商帳單為準。</p>
+  </section>
+
+  <section class="set-sec">
     <h3>⭐ 錯題本備份</h3>
     <p class="set-hint" style="margin:0 0 8px">錯題本只存在這支手機的瀏覽器裡，清除瀏覽器資料就會消失。換手機或清資料前，先匯出備份。</p>
     <div class="set-row">
@@ -580,6 +596,29 @@
 
   <button class="action-btn primary" onclick="closeSettings()">完成</button>
   <p class="set-ver">Homie <span id="appVersion"></span>・<a href="https://github.com/sakuradigi/homie/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新紀錄</a></p>
+</div>
+
+<!-- 照片旋轉／裁切 -->
+<div class="sheet-bg" id="editBg" onclick="closeEditor()"></div>
+<div class="sheet" id="editSheet" role="dialog" aria-label="調整照片">
+  <div class="co-handle"></div>
+  <div class="sheet-head"><b>✂️ 調整照片</b><button class="sheet-close" onclick="closeEditor()" aria-label="關閉">✕</button></div>
+  <p class="set-hint" style="margin:0">用手指在照片上拉出要保留的範圍；不拉就整張保留。</p>
+  <div class="edit-stage" id="editStage"><canvas id="editCanvas"></canvas></div>
+  <div class="mk-actions">
+    <button class="mk-btn" onclick="editRotate()">↻ 旋轉</button>
+    <button class="mk-btn" onclick="editReset()">重設範圍</button>
+    <button class="mk-btn primary" style="margin-left:auto" onclick="editApply()">✓ 套用</button>
+  </div>
+</div>
+
+<!-- 英文單字 -->
+<div class="sheet-bg" id="wordBg" onclick="closeWord()"></div>
+<div class="sheet" id="wordSheet" role="dialog" aria-label="單字">
+  <div class="co-handle"></div>
+  <div class="sheet-head"><b id="wordTitle" style="font-size:24px"></b><button class="sheet-close" onclick="closeWord()" aria-label="關閉">✕</button></div>
+  <div id="wordBody"></div>
+  <div class="mk-actions"><button class="mk-btn" id="wordSay">🔊 再聽一次</button><button class="mk-btn primary" style="margin-left:auto" onclick="closeWord()">知道了</button></div>
 </div>
 
 <!-- 再練 3 題 -->
@@ -618,7 +657,7 @@
 <script>
 // ===== 版本 =====
 // 每次發版要同步：這裡、sw.js 的 CACHE、CHANGELOG.md 最上面那版（test_homie.mjs 會檢查三者一致）
-const APP_VERSION = 'v0.14.0';
+const APP_VERSION = 'v0.15.0';
 
 // ===== STATE =====
 let hwImages = [], rdImages = [];
@@ -748,6 +787,7 @@ function switchProvider(p, silent) {
 
 function openSettings() {
   syncPlayerPrefs();
+  renderUsage();
   document.getElementById('settingsSheet').classList.add('show');
   document.getElementById('settingsBg').classList.add('show');
 }
@@ -926,7 +966,7 @@ function renderPreview(prefix) {
   arr.forEach((img, i) => {
     const div = document.createElement('div');
     div.className = 'preview-item';
-    div.innerHTML = `<img src="${img.dataUrl}" /><button class="remove-btn" onclick="removeImage('${prefix}',${i})">✕</button><div class="page-num">P${i+1}</div>`;
+    div.innerHTML = `<img src="${img.dataUrl}" onclick="openEditor('${prefix}',${i})" /><button class="remove-btn" onclick="removeImage('${prefix}',${i})">✕</button><div class="page-num">P${i+1}</div><button class="edit-btn" onclick="openEditor('${prefix}',${i})">✂️ 調整</button>`;
     container.appendChild(div);
   });
 }
@@ -1009,15 +1049,18 @@ let lastResponseTruncated = false;
 // signal：AbortController.signal，用來中途取消（串流讀到一半也能停）
 async function callAI(prompt, images, onChunk, signal) {
   lastResponseTruncated = false;
+  lastUsage = null;
+  lastCost = null;
   const key = getCurrentKey();
   if (!key) {
     alert(`請先輸入並儲存 ${PROVIDERS[currentProvider].name} API Key！`);
     openSettings();
     return null;
   }
-  if (currentProvider === 'gemini') return callGemini(prompt, images, key, onChunk, signal);
-  if (currentProvider === 'claude') return callClaude(prompt, images, key, onChunk, signal);
-  if (currentProvider === 'openai') return callOpenAI(prompt, images, key, onChunk, signal);
+  const fn = { gemini: callGemini, claude: callClaude, openai: callOpenAI }[currentProvider];
+  const out = await fn(prompt, images, key, onChunk, signal);
+  recordUsage(getSelectedModel());
+  return out;
 }
 
 async function apiError(res, providerName) {
@@ -1072,6 +1115,8 @@ async function callGemini(prompt, images, key, onChunk, signal) {
       if (p.text) { full += p.text; added = true; }
     }
     if (cand?.finishReason === 'MAX_TOKENS') lastResponseTruncated = true;
+    const um = d.usageMetadata;   // 用量是累計值，最後一段最準
+    if (um) lastUsage = { input: um.promptTokenCount || 0, output: (um.candidatesTokenCount || 0) + (um.thoughtsTokenCount || 0) };
     if (added && onChunk) onChunk(full);
   });
   return full;
@@ -1113,6 +1158,11 @@ async function callClaude(prompt, images, key, onChunk, signal) {
       if (onChunk) onChunk(full);
     }
     if (d.type === 'message_delta' && d.delta?.stop_reason === 'max_tokens') lastResponseTruncated = true;
+    if (d.type === 'message_start' && d.message?.usage) {
+      const u = d.message.usage;
+      lastUsage = { input: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0), output: u.output_tokens || 0 };
+    }
+    if (d.type === 'message_delta' && d.usage && lastUsage) lastUsage.output = d.usage.output_tokens || lastUsage.output;
     if (d.type === 'message_delta' && d.delta?.stop_reason === 'refusal') refused = true;
   });
   if (refused) throw new Error('Claude 的安全機制擋下了這次內容（偶爾會誤判）。請再試一次，或換用 Gemini／OpenAI。');
@@ -1128,7 +1178,7 @@ async function callOpenAI(prompt, images, key, onChunk, signal) {
   const model = getSelectedModel();
   // GPT-5 以後改用 max_completion_tokens，送舊的 max_tokens 會被 400 退回。
   // 推理（reasoning）token 同樣算在這個額度內，所以開得比舊值大。
-  const body = { model, messages: [{ role: 'user', content }], stream: true };
+  const body = { model, messages: [{ role: 'user', content }], stream: true, stream_options: { include_usage: true } };
   if (/^gpt-[0-4]/.test(model)) body.max_tokens = 8192;
   else body.max_completion_tokens = 16384;
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1143,6 +1193,7 @@ async function callOpenAI(prompt, images, key, onChunk, signal) {
     const t = d.choices?.[0]?.delta?.content;
     if (t) { full += t; if (onChunk) onChunk(full); }
     if (d.choices?.[0]?.finish_reason === 'length') lastResponseTruncated = true;
+    if (d.usage) lastUsage = { input: d.usage.prompt_tokens || 0, output: d.usage.completion_tokens || 0 };
   });
   return full;
 }
@@ -1205,6 +1256,9 @@ status 只能是 correct（答對）、wrong（寫錯）、blank（沒寫）。�
     resultsEl.innerHTML = '';
     const ts = saveHistory('hw', text, null, userHint);
     renderHomeworkResult(text, userHint, lastResponseTruncated, ts);
+    const note = costNote();
+    if (note) resultsEl.querySelector('.result-card')?.appendChild(note);
+    saveThumb(ts, hwImages).then(() => loadHistoryUI('hw'));
     loadHistoryUI('hw');
     addMistakesFromResult(currentHw.data, ts);
   } catch (e) {
@@ -1258,6 +1312,11 @@ function renderHomeworkResult(text, usedHint, truncated, ts) {
       : [wrong && `${wrong} 題要訂正`, blank && `${blank} 題還沒寫`].filter(Boolean).join('、');
     resultsEl.appendChild(sum);
     todo.forEach(it => resultsEl.appendChild(makeItemCard(it, 'result', [['✏️ 再練 3 題', () => openPractice({ ...it, subject: data.subject })]])));
+    const share = document.createElement('button');
+    share.className = 'mk-btn';
+    share.style.margin = '0 0 10px';
+    share.textContent = '📤 分享結果（傳 LINE 給家人或老師）';
+    share.onclick = shareResult;
     if (todo.length) {
       const rv = document.createElement('button');
       rv.className = 'action-btn primary';
@@ -1266,6 +1325,7 @@ function renderHomeworkResult(text, usedHint, truncated, ts) {
       rv.onclick = startReview;
       resultsEl.appendChild(rv);
     }
+    resultsEl.appendChild(share);
     const det = document.createElement('details');
     det.className = 'hw-full';
     const summ = document.createElement('summary');
@@ -1430,19 +1490,22 @@ let mkDbPromise = null;
 function mkDb() {
   if (!window.indexedDB) return Promise.reject(new Error('no indexedDB'));
   if (!mkDbPromise) mkDbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open('homie', 1);
+    const req = indexedDB.open('homie', 2);   // v2：新增 thumbs（歷史紀錄縮圖）
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains('mistakes')) req.result.createObjectStore('mistakes', { keyPath: 'id' });
+      const db = req.result;
+      if (!db.objectStoreNames.contains('mistakes')) db.createObjectStore('mistakes', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs', { keyPath: 'ts' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
   return mkDbPromise;
 }
-function mkTx(mode, fn) {
+function mkTx(mode, fn) { return dbTx('mistakes', mode, fn); }
+function dbTx(store, mode, fn) {
   return mkDb().then(db => new Promise((resolve, reject) => {
-    const tx = db.transaction('mistakes', mode);
-    const out = fn(tx.objectStore('mistakes'));
+    const tx = db.transaction(store, mode);
+    const out = fn(tx.objectStore(store));
     tx.oncomplete = () => resolve(out && 'result' in out ? out.result : undefined);
     tx.onerror = () => reject(tx.error);
   }));
@@ -1760,6 +1823,387 @@ async function importMistakes(input) {
   }
 }
 
+// ===== 照片編輯：旋轉／裁切 =====
+// 點預覽縮圖打開。旋轉直接轉原圖；裁切是用手指拉出要保留的範圍（座標都換算回原圖）
+let edit = null;   // { prefix, idx, src: canvas（已旋轉的原圖）, crop: {x,y,w,h}|null, start }
+function loadImg(src) {
+  return new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
+}
+
+async function openEditor(prefix, idx) {
+  const arr = prefix === 'hw' ? hwImages : rdImages;
+  if (!arr[idx]) return;
+  const img = await loadImg(arr[idx].dataUrl);
+  const src = document.createElement('canvas');
+  src.width = img.naturalWidth || img.width; src.height = img.naturalHeight || img.height;
+  const ctx = src.getContext('2d');
+  if (!ctx) return;   // 瀏覽器不支援 canvas
+  ctx.drawImage(img, 0, 0);
+  edit = { prefix, idx, src, crop: null, start: null };
+  document.getElementById('editSheet').classList.add('show');
+  document.getElementById('editBg').classList.add('show');
+  drawEditor();   // 面板用 transform 滑入，不影響寬度量測，可以直接畫
+}
+
+function closeEditor() {
+  edit = null;
+  document.getElementById('editSheet').classList.remove('show');
+  document.getElementById('editBg').classList.remove('show');
+}
+
+function editScale() {
+  const stage = document.getElementById('editStage');
+  const maxW = Math.max(200, stage.clientWidth || 340);
+  const maxH = Math.max(200, window.innerHeight * 0.55);
+  return Math.min(maxW / edit.src.width, maxH / edit.src.height);
+}
+
+function drawEditor() {
+  if (!edit) return;
+  const cv = document.getElementById('editCanvas');
+  const k = editScale();
+  cv.width = Math.round(edit.src.width * k); cv.height = Math.round(edit.src.height * k);
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(edit.src, 0, 0, cv.width, cv.height);
+  const c = edit.crop;
+  if (!c) return;
+  const x = c.x * k, y = c.y * k, w = c.w * k, h = c.h * k;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';   // 範圍外調暗
+  ctx.fillRect(0, 0, cv.width, y); ctx.fillRect(0, y + h, cv.width, cv.height - y - h);
+  ctx.fillRect(0, y, x, h); ctx.fillRect(x + w, y, cv.width - x - w, h);
+  ctx.strokeStyle = '#F4436C'; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
+}
+
+// 兩個點拉出的長方形，夾在圖片範圍內
+function normRect(a, b, maxW, maxH) {
+  const cl = (v, m) => Math.max(0, Math.min(m, v));
+  const x1 = cl(Math.min(a.x, b.x), maxW), y1 = cl(Math.min(a.y, b.y), maxH);
+  const x2 = cl(Math.max(a.x, b.x), maxW), y2 = cl(Math.max(a.y, b.y), maxH);
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+function editPoint(e) {
+  const cv = document.getElementById('editCanvas');
+  const r = cv.getBoundingClientRect();
+  const k = editScale();
+  return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k };
+}
+
+function editRotate() {
+  if (!edit) return;
+  const s = edit.src, out = document.createElement('canvas');
+  out.width = s.height; out.height = s.width;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width, 0); ctx.rotate(Math.PI / 2); ctx.drawImage(s, 0, 0);
+  edit.src = out; edit.crop = null;
+  drawEditor();
+}
+
+function editReset() {
+  if (!edit) return;
+  edit.crop = null;
+  drawEditor();
+}
+
+function editApply() {
+  if (!edit) return;
+  const c = edit.crop || { x: 0, y: 0, w: edit.src.width, h: edit.src.height };
+  const k = Math.min(1, 1600 / Math.max(c.w, c.h));   // 和上傳壓縮一樣：長邊最多 1600px
+  const out = document.createElement('canvas');
+  out.width = Math.round(c.w * k); out.height = Math.round(c.h * k);
+  const octx = out.getContext('2d');
+  octx.fillStyle = '#FFFFFF'; octx.fillRect(0, 0, out.width, out.height);   // 透明背景轉 JPEG 會變黑，先鋪白
+  octx.drawImage(edit.src, c.x, c.y, c.w, c.h, 0, 0, out.width, out.height);
+  const arr = edit.prefix === 'hw' ? hwImages : rdImages;
+  arr[edit.idx] = { mime: 'image/jpeg', dataUrl: out.toDataURL('image/jpeg', 0.85) };
+  renderPreview(edit.prefix);
+  closeEditor();
+}
+
+(function bindEditor() {
+  const cv = document.getElementById('editCanvas');
+  if (!cv) return;
+  cv.addEventListener('pointerdown', e => {
+    if (!edit) return;
+    cv.setPointerCapture?.(e.pointerId);
+    edit.start = editPoint(e);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!edit || !edit.start) return;
+    edit.crop = normRect(edit.start, editPoint(e), edit.src.width, edit.src.height);
+    drawEditor();
+  });
+  const end = () => {
+    if (!edit || !edit.start) return;
+    edit.start = null;
+    // 太小的範圍（手指只是點一下）當作沒裁
+    if (edit.crop && (edit.crop.w < edit.src.width * 0.05 || edit.crop.h < edit.src.height * 0.05)) edit.crop = null;
+    drawEditor();
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+})();
+
+// ===== 歷史紀錄縮圖（存在 IndexedDB 的 thumbs，key = 那筆紀錄的時間戳）=====
+function makeThumb(dataUrl) {
+  return loadImg(dataUrl).then(img => {
+    const c = document.createElement('canvas');
+    const k = Math.min(1, 200 / Math.max(img.width, img.height));
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.7);
+  }).catch(() => null);
+}
+
+async function saveThumb(ts, images) {
+  if (!images || !images.length) return;
+  const thumb = await makeThumb(images[0].dataUrl);
+  if (!thumb) return;
+  try { await dbTx('thumbs', 'readwrite', s => { s.put({ ts, thumb, pages: images.length }); }); } catch (e) {}
+}
+
+async function getThumb(ts) {
+  try { return await dbTx('thumbs', 'readonly', s => s.get(ts)); } catch (e) { return null; }
+}
+
+function deleteThumbs(tsList) {
+  if (!tsList.length) return;
+  dbTx('thumbs', 'readwrite', s => { tsList.forEach(ts => s.delete(ts)); }).catch(() => {});
+}
+
+// ===== 實際花費（依 API 回傳的用量 × 公告單價估算）=====
+// 單價：美元／每百萬 tokens [輸入, 輸出]。2026-10 公告價；輸出含思考 token。不含 AI 語音。
+const PRICES = {
+  'gemini-3.8-flash': [0.75, 3.75], 'gemini-3.7-flash': [0.75, 3.75],
+  'claude-haiku-4-5': [1, 5], 'claude-sonnet-5-5': [2, 10], 'claude-opus-5-5': [4, 20],
+  'gpt-5.6-luna': [1, 6], 'gpt-5.4-nano': [0.2, 1.25], 'gpt-5.6-sol': [5, 30], 'gpt-5.4-mini': [0.75, 4.5]
+};
+const USD_TWD = 32;   // 粗估匯率
+let lastUsage = null;  // 這次呼叫的 { input, output } tokens
+let lastCost = null;   // 這次呼叫約多少美元
+
+function costOf(model, usage) {
+  const p = PRICES[model];
+  if (!p || !usage) return null;
+  return (usage.input * p[0] + usage.output * p[1]) / 1e6;
+}
+
+function monthKey(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+
+function recordUsage(model) {
+  lastCost = costOf(model, lastUsage);
+  if (lastCost == null) return;
+  let u = {};
+  try { u = JSON.parse(lsGet('homie_usage', '{}')) || {}; } catch (e) {}
+  const m = monthKey();
+  u[m] = { usd: ((u[m] && u[m].usd) || 0) + lastCost, calls: ((u[m] && u[m].calls) || 0) + 1 };
+  Object.keys(u).sort().slice(0, -6).forEach(k => delete u[k]);   // 只留最近 6 個月
+  lsSet('homie_usage', JSON.stringify(u));
+}
+
+function fmtTwd(usd) {
+  const t = usd * USD_TWD;
+  return t < 0.1 ? `NT$${t.toFixed(2)}` : t < 10 ? `NT$${t.toFixed(1)}` : `NT$${Math.round(t)}`;
+}
+
+function costNote() {
+  if (lastCost == null) return null;
+  const n = document.createElement('div');
+  n.className = 'cost-note';
+  n.textContent = `💰 這次約 ${fmtTwd(lastCost)}`;
+  return n;
+}
+
+function renderUsage() {
+  const el = document.getElementById('usageText');
+  if (!el) return;
+  let u = {};
+  try { u = JSON.parse(lsGet('homie_usage', '{}')) || {}; } catch (e) {}
+  const cur = u[monthKey()];
+  const prevD = new Date(); prevD.setDate(1); prevD.setMonth(prevD.getMonth() - 1);
+  const prev = u[monthKey(prevD)];
+  el.textContent = cur ? `本月約 ${fmtTwd(cur.usd)}（${cur.calls} 次 AI 分析）` : '本月還沒有使用紀錄';
+  if (prev) el.textContent += `・上個月約 ${fmtTwd(prev.usd)}`;
+}
+
+// ===== 解題結果分享成圖片 =====
+// 先排版成「一行一行」的清單（方便測試），再畫到 canvas
+function shareLines(data, ts) {
+  const d = new Date(ts || Date.now());
+  const todo = data.items.filter(it => it.status !== 'correct');
+  const L = [
+    { t: `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}・${data.subject || '作業'}`, s: 'meta' },
+    { t: !todo.length ? `🎉 ${data.items.length} 題全對！` :
+        `共 ${data.items.length} 題：` + [todo.filter(i => i.status === 'wrong').length && `${todo.filter(i => i.status === 'wrong').length} 題要訂正`,
+          todo.filter(i => i.status === 'blank').length && `${todo.filter(i => i.status === 'blank').length} 題還沒寫`].filter(Boolean).join('、'), s: 'sum' }
+  ];
+  todo.forEach(it => {
+    L.push({ t: `${it.no}｜${it.status === 'blank' ? '還沒寫' : '要訂正'}${it.concept ? '｜' + it.concept : ''}`, s: 'head' });
+    if (it.question) L.push({ t: it.question, s: 'body' });
+    L.push({ t: it.status === 'wrong' && it.child ? `孩子寫：${it.child} → 正確：${it.answer}` : `答案：${it.answer}`, s: 'ans' });
+    if (it.why) L.push({ t: it.why, s: 'note' });
+  });
+  return L;
+}
+
+// 依寬度折行（中文一個字一個字量；英文盡量不拆單字）
+function wrapText(ctx, text, maxW) {
+  const tokens = String(text).match(/[A-Za-z0-9'’.,!?-]+\s*|\s+|./gu) || [];
+  const lines = [];
+  let cur = '';
+  tokens.forEach(tk => {
+    if (ctx.measureText(cur + tk).width > maxW && cur) { lines.push(cur.trimEnd()); cur = tk.trimStart(); }
+    else cur += tk;
+  });
+  if (cur.trim()) lines.push(cur.trimEnd());
+  return lines.length ? lines : [''];
+}
+
+const SHARE_STYLE = {
+  meta: { f: '28px', c: '#6B7280', gap: 8 }, sum: { f: 'bold 44px', c: '#9F1239', gap: 28 },
+  head: { f: 'bold 32px', c: '#0F766E', gap: 6, top: 26 }, body: { f: '32px', c: '#1A1A2E', gap: 6 },
+  ans: { f: 'bold 32px', c: '#DC2626', gap: 6 }, note: { f: '28px', c: '#6B7280', gap: 6 }
+};
+
+async function shareResult() {
+  if (!currentHw || !currentHw.data) return;
+  const W = 1080, PAD = 64, FONT = "-apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif";
+  const cv = document.createElement('canvas');
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  const lines = shareLines(currentHw.data, currentHw.ts);
+  // 先量高度
+  const laid = [];
+  let y = 200;
+  lines.forEach(l => {
+    const st = SHARE_STYLE[l.s];
+    ctx.font = `${st.f} ${FONT}`;
+    y += st.top || 0;
+    wrapText(ctx, l.t, W - PAD * 2).forEach(t => { const h = parseInt(st.f.replace(/\D+/g, ''), 10) * 1.45; laid.push({ t, st, y }); y += h; });
+    y += st.gap;
+  });
+  cv.width = W; cv.height = y + 110;
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, cv.height);
+  ctx.fillStyle = '#0D9488'; ctx.fillRect(0, 0, W, 150);
+  ctx.fillStyle = '#FFFFFF'; ctx.font = `bold 52px ${FONT}`; ctx.textBaseline = 'top';
+  ctx.fillText('Homie 作業通・作業檢查', PAD, 46);
+  laid.forEach(({ t, st, y }) => { ctx.font = `${st.f} ${FONT}`; ctx.fillStyle = st.c; ctx.fillText(t, PAD, y); });
+  ctx.fillStyle = '#9CA3AF'; ctx.font = `24px ${FONT}`;
+  ctx.fillText('由 Homie 作業通產生', PAD, cv.height - 64);
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  if (!blob) return;
+  const file = new File([blob], 'homie-作業檢查.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Homie 作業檢查' });
+      return;
+    }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a');   // 不支援分享就直接下載
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ===== 英文繪本：查單字 =====
+let wordMode = false;
+function toggleWordMode() {
+  wordMode = !wordMode;
+  const b = plEl('wordBtn');
+  if (b) { b.classList.toggle('on', wordMode); b.textContent = wordMode ? '🔤 查單字：開' : '🔤 查單字'; }
+  document.getElementById('rdResults').classList.toggle('word-mode', wordMode);
+  if (wordMode) pausePlayback();
+  showPlayerNotice(wordMode ? '點英文單字就會顯示中文意思；查完再按一次「查單字」回到朗讀。' : '');
+}
+
+// 從句子文字和點到的位置，取出那個英文單字
+function wordAt(text, offset) {
+  const isW = ch => /[A-Za-z'’-]/.test(ch || '');
+  let a = Math.min(Math.max(0, offset), text.length), b = a;
+  if (!isW(text[a]) && isW(text[a - 1])) a--, b = a;
+  if (!isW(text[a])) return '';
+  while (a > 0 && isW(text[a - 1])) a--;
+  while (b < text.length && isW(text[b])) b++;
+  return text.slice(a, b).replace(/^['’-]+|['’-]+$/g, '');
+}
+
+function wordFromClick(e, el) {
+  let node = null, off = 0;
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(e.clientX, e.clientY);
+    if (p) { node = p.offsetNode; off = p.offset; }
+  } else if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+    if (r) { node = r.startContainer; off = r.startOffset; }
+  }
+  if (!node || !el.contains(node)) return '';
+  return wordAt(node.textContent || '', off);
+}
+
+function onSegmentClick(e, segIdx, el) {
+  if (wordMode && currentReadLang === 'en') {
+    const w = wordFromClick(e, el);
+    if (w) lookupWord(w, el.textContent);
+    return;
+  }
+  playFrom(playlist.findIndex(it => it.kind === 'read' && it.seg === segIdx));
+}
+
+async function lookupWord(word, sentence) {
+  const sheet = document.getElementById('wordSheet');
+  document.getElementById('wordTitle').textContent = word;
+  const body = document.getElementById('wordBody');
+  body.textContent = '查詢中…';
+  sheet.classList.add('show');
+  document.getElementById('wordBg').classList.add('show');
+  document.getElementById('wordSay').onclick = () => sayWord(word);
+  sayWord(word);
+  const key = word.toLowerCase();
+  let cache = {};
+  try { cache = JSON.parse(lsGet('homie_words', '{}')) || {}; } catch (e) {}
+  let info = cache[key];
+  if (!info) {
+    const prompt = `孩子是${GRADE_LABEL[getChildGrade()]}學生，正在讀英文繪本，句子是：「${sentence}」
+請用繁體中文解釋單字「${word}」。只輸出 JSON，不要加任何說明：
+{"zh": "中文意思（2～6 個字）", "pos": "詞性（名詞／動詞／形容詞…）", "note": "這個字在這句裡的意思，一句話、孩子聽得懂"}`;
+    try {
+      const text = await callAI(prompt, [], null);
+      if (text === null) { closeWord(); return; }
+      const m = String(text).match(/\{[\s\S]*\}/);
+      const j = m ? JSON.parse(m[0]) : null;
+      if (!j || !j.zh) throw new Error('查不到，請再試一次');
+      info = { zh: String(j.zh).slice(0, 30), pos: String(j.pos || '').slice(0, 10), note: String(j.note || '').slice(0, 120) };
+      cache[key] = info;
+      const keys = Object.keys(cache);
+      if (keys.length > 300) delete cache[keys[0]];   // 只留最近 300 個字
+      lsSet('homie_words', JSON.stringify(cache));
+    } catch (e) {
+      body.textContent = '❌ ' + e.message;
+      return;
+    }
+  }
+  body.innerHTML = '';
+  const zh = document.createElement('div'); zh.className = 'word-zh'; zh.textContent = info.zh;
+  body.append(zh);
+  if (info.pos) { const p = document.createElement('span'); p.className = 'mk-concept'; p.textContent = info.pos; body.append(p); }
+  if (info.note) { const n = document.createElement('div'); n.className = 'mk-why'; n.textContent = info.note; body.append(n); }
+}
+
+function sayWord(word) {
+  pausePlayback();
+  const session = ++playSession;
+  if (activeEngine() !== 'browser') unlockAudio();
+  speakItem({ kind: 'read', text: word }, session, () => {});
+}
+
+function closeWord() {
+  document.getElementById('wordSheet').classList.remove('show');
+  document.getElementById('wordBg').classList.remove('show');
+}
+
 // 從渲染好的 markdown 取出要唸的段落：只取最內層的區塊（<li><p> 只唸 <p>），避免重複唸
 function collectSpeakBlocks(root) {
   const SEL = 'h1,h2,h3,h4,p,li,blockquote';
@@ -1821,6 +2265,9 @@ ${langInstr}。
     const readLang = detectLang(text);
     renderReadingResult(text, readLang);
     currentRdHistoryTs = saveHistory('rd', text, readLang);
+    const note = costNote();
+    if (note) resultsEl.querySelector('.read-card')?.appendChild(note);
+    saveThumb(currentRdHistoryTs, rdImages).then(() => loadHistoryUI('rd'));
     loadHistoryUI('rd');
   } catch (e) {
     resultsEl.innerHTML = e.name === 'AbortError'
@@ -1895,6 +2342,8 @@ function mergeLayoutLines(lines) {
 function renderReadingResult(text, readLang, companion) {
   activatePlayer('rd');
   stopTTS();
+  wordMode = false;
+  document.getElementById('rdResults').classList.remove('word-mode');
   companionNotes = null;
   const resultsEl = document.getElementById('rdResults');
   resultsEl.innerHTML = '';
@@ -1937,7 +2386,7 @@ function renderReadingResult(text, readLang, companion) {
         const segEl = document.createElement('span');
         segEl.className = 'para-segment';
         segEl.textContent = sentence;
-        segEl.onclick = () => playFrom(playlist.findIndex(it => it.kind === 'read' && it.seg === segIdx));
+        segEl.onclick = (e) => onSegmentClick(e, segIdx, segEl);
         pEl.appendChild(segEl);
         currentSegments.push({ text: sentence, el: segEl });
       });
@@ -1986,6 +2435,7 @@ function buildPlayer(prefix) {
       <button class="pl-btn play" ${a('plPlay')} onclick="togglePlay()">▶ 播放</button>
       <button class="pl-btn" onclick="skipItem(1)" title="下一${unitOf(prefix)}" aria-label="下一${unitOf(prefix)}">⏭</button>
       <button class="pl-btn" onclick="playFrom(0)" title="從頭開始" aria-label="從頭開始">↺</button>
+      ${prefix === 'rd' && currentReadLang === 'en' ? `<button class="pl-btn word-btn" ${a('wordBtn')} onclick="toggleWordMode()">🔤 查單字</button>` : ''}
     </div>
     <div class="pl-sub">
       <span class="pl-status" ${a('plStatus')}></span>
@@ -2729,7 +3179,7 @@ function resetPanel(prefix) {
 // ===== HISTORY =====
 const HISTORY_KEY = { hw: 'homie_hw_history', rd: 'homie_rd_history' };
 const LEGACY_HISTORY_KEY = { hw: 'kidai_hw_history', rd: 'kidai_rd_history' };
-const MAX_HISTORY = 10;
+const MAX_HISTORY = 30;
 
 // 品牌更名遺留：把舊 kidai_ 前綴的紀錄搬到新的 homie_ 前綴，避免老用戶歷史紀錄消失
 (function migrateLegacyHistory() {
@@ -2760,7 +3210,10 @@ function saveHistory(prefix, text, readLang, hint) {
     readLang: readLang || null,
     hint: hint || null
   });
-  if (arr.length > MAX_HISTORY) arr = arr.slice(0, MAX_HISTORY);
+  if (arr.length > MAX_HISTORY) {
+    deleteThumbs(arr.slice(MAX_HISTORY).map(x => x.ts));   // 被擠掉的紀錄，縮圖一起刪
+    arr = arr.slice(0, MAX_HISTORY);
+  }
   try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e) {}
   return ts;
 }
@@ -2791,7 +3244,14 @@ function loadHistoryUI(prefix) {
     prev.className = 'h-preview';
     // 舊資料的 preview 可能還含 markdown／HTML 標記，這裡再清一次
     prev.textContent = item.preview.replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').trim() + '…';
-    div.append(meta, prev);
+    const thumb = document.createElement('img');
+    thumb.className = 'h-thumb';
+    thumb.alt = '';
+    getThumb(item.ts).then(t => { if (t && t.thumb) thumb.src = t.thumb; else thumb.remove(); });
+    const txt = document.createElement('div');
+    txt.className = 'h-text';
+    txt.append(meta, prev);
+    div.append(thumb, txt);
     div.onclick = () => restoreHistory(prefix, item);
     listEl.appendChild(div);
   });
