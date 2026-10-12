@@ -74,7 +74,8 @@ window.__T = {
   utter: () => currentUtterance,
   version: () => APP_VERSION,
   lastCost: () => lastCost,
-  wordMode: () => wordMode
+  wordMode: () => wordMode,
+  shadow: () => shadowState
 };`);
 
 const T = win.__T;
@@ -942,6 +943,92 @@ check('同一個字第二次查用快取', wq === 1);
 win.toggleWordMode();
 win.renderReadingResult(BOOK, 'zh');
 check('中文繪本沒有查單字按鈕', !doc.querySelector('#rdPlayer [data-pl="wordBtn"]'));
+
+// ── 24. 模型選擇記住、字體大小、跟讀 ─────────────────
+win.localStorage.setItem('homie_gemini_key', 'AIza-test');
+win.localStorage.setItem('homie_claude_key', 'sk-ant-test');
+T.setProvider('gemini'); win.switchProvider('gemini', true);
+const ms = doc.getElementById('modelSelect');
+ms.value = 'gemini-3.7-flash';
+win.onModelChange();
+T.setProvider('claude'); win.switchProvider('claude', true);
+ms.value = 'claude-opus-5-5';
+win.onModelChange();
+T.setProvider('gemini'); win.switchProvider('gemini', true);
+check('切回 Gemini 仍是選過的 3.7 Flash', ms.value === 'gemini-3.7-flash', ms.value);
+T.setProvider('claude'); win.switchProvider('claude', true);
+check('切回 Claude 仍是選過的 Opus 5.5', ms.value === 'claude-opus-5-5', ms.value);
+check('費用標示跟著換', doc.getElementById('costBadge').textContent === '~$0.008 / 次');
+win.localStorage.setItem('homie_model_claude', 'claude-old-removed');
+win.switchProvider('claude', true);
+check('記住的模型已下架就用預設', ms.value === 'claude-haiku-4-5');
+win.localStorage.removeItem('homie_model_claude');
+win.localStorage.removeItem('homie_model_gemini');
+T.setProvider('gemini'); win.switchProvider('gemini', true);
+
+win.setFontScale('xlarge');
+check('字體特大：倍率 1.4', doc.documentElement.style.getPropertyValue('--fs') === '1.4' && win.localStorage.getItem('homie_font_scale') === 'xlarge');
+check('字體按鈕標示目前選項', doc.querySelector('#fontScale [data-fs="xlarge"]').classList.contains('on'));
+check('CSS：閱讀文字跟著倍率放大', /\.result-content \{ font-size: calc\(15px \* var\(--fs\)\)/.test(doc.querySelector('style').textContent));
+win.setFontScale('bogus');
+check('不認得的值退回標準', doc.documentElement.style.getPropertyValue('--fs') === '1');
+win.setFontScale('normal');
+
+// 比對評分
+let cmp = win.compareSpeech('小熊肚子好餓。', '小熊肚子好餓', 'zh');
+check('中文全部唸對 = 100%', cmp.score === 1 && cmp.marks.filter(m => m.ok === null).length === 1);
+cmp = win.compareSpeech('小熊肚子好餓。', '小熊好餓', 'zh');
+check('漏字會被標出來', Math.abs(cmp.score - 4 / 6) < 1e-9 && cmp.marks.filter(m => m.ok === false).map(m => m.t).join('') === '肚子');
+check('數字與國字視為相同', win.compareSpeech('他有三顆蘋果', '他有3顆蘋果', 'zh').score === 1);
+cmp = win.compareSpeech('The bear was very hungry.', 'the bear was hungry', 'en');
+check('英文依單字比對、不分大小寫', cmp.score === 0.8 && cmp.marks.find(m => m.t === 'very').ok === false);
+check('星星門檻', win.shadowStars(0.9) === 3 && win.shadowStars(0.7) === 2 && win.shadowStars(0.3) === 1);
+
+// 跟讀流程（模擬語音辨識）
+let recs = [];
+win.SpeechRecognition = class { constructor() { recs.push(this); this.started = false; } start() { this.started = true; } abort() { this.aborted = true; } };
+const srEvent = (alts) => ({ results: [Object.assign(alts.map(t => ({ transcript: t })), { isFinal: true })] });
+win.localStorage.setItem('homie_tts_engine', 'browser');
+win.renderReadingResult(BOOK, 'zh');
+win.localStorage.removeItem('homie_shadow_seen');
+win.setReadMode('shadow');
+check('跟讀模式提示麥克風與隱私', doc.getElementById('plNotice').textContent.includes('Google') && doc.querySelector('#rdPlayer [data-mode="shadow"]').classList.contains('on'));
+spoken.length = 0;
+win.playFrom(0);
+check('先由 AI 唸第一句', spoken[0] === '小熊說：「我好餓。」' && recs.length === 0);
+win.speechSynthesis.finish();
+check('AI 唸完就開始聽孩子唸', recs.length === 1 && recs[0].started && recs[0].lang === 'zh-TW' && T.shadow() === 'listening');
+check('狀態列提示換你唸', doc.getElementById('plStatus').textContent.includes('換你唸'));
+recs[0].onresult(srEvent(['小熊說我好', '小熊說我好餓']));
+const fb = doc.querySelector('#rdResults .shadow-fb');
+check('評分：取最接近原文的候選結果', !!fb && fb.textContent.includes('⭐⭐⭐') && fb.textContent.includes('聽到：小熊說我好餓'), fb && fb.textContent);
+check('評分卡片放在那一句後面', fb.previousElementSibling === doc.querySelectorAll('#rdResults .para-segment')[0]);
+check('評分後收起第一次的說明', doc.getElementById('plNotice').style.display === 'none');
+win.setReadMode('plain'); win.setReadMode('shadow');
+check('第二次進入跟讀不再顯示長說明', doc.getElementById('plNotice').style.display === 'none');
+win.playFrom(0); win.speechSynthesis.finish(); recs[recs.length - 1].onresult(srEvent(['小熊說我好餓']));
+check('三顆星後停下等待、位置指向下一句', T.shadow() === 'done' && T.state().playIdx === 1 && !T.state().isPlaying);
+await sleep(1600);
+check('三顆星自動接下一句', spoken[spoken.length - 1] === '他走進森林。', JSON.stringify(spoken));
+win.speechSynthesis.finish();
+recs[recs.length - 1].onresult(srEvent(['他走']));
+const fb2 = doc.querySelector('#rdResults .shadow-fb');
+check('唸不完整只有一顆星、標出漏掉的字', fb2.textContent.includes('⭐　再試一次') && fb2.querySelectorAll('.sf-miss').length === 3);
+check('一次只顯示一張評分卡', doc.querySelectorAll('#rdResults .shadow-fb').length === 1);
+const nRecs = recs.length;
+[...fb2.querySelectorAll('.mk-btn')].find(b => b.textContent.includes('再唸一次')).click();
+check('再唸一次：直接再聽，不重唸原文', recs.length === nRecs + 1 && T.shadow() === 'listening');
+recs[recs.length - 1].onerror({ error: 'no-speech' });
+check('沒聽到聲音時提示再試', doc.querySelector('#rdResults .shadow-fb').textContent.includes('沒有聽到聲音'));
+win.playFrom(2);
+check('播放時會停掉辨識', recs[recs.length - 1].aborted === true || T.shadow() === null);
+win.stopTTS();
+win.setReadMode('plain');
+check('切回純朗讀清掉評分卡', !doc.querySelector('#rdResults .shadow-fb'));
+delete win.SpeechRecognition;
+win.setReadMode('shadow');
+check('不支援語音辨識的瀏覽器會提示', doc.getElementById('plNotice').textContent.includes('不支援語音辨識'));
+win.setReadMode('plain');
 
 // ── 22. 版本號一致 ───────────────────────────────────
 const ver = T.version();

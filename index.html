@@ -22,6 +22,7 @@
     --success: #10B981;
     --radius: 14px;
     --shadow: 0 2px 16px rgba(0,0,0,0.08);
+    --fs: 1;   /* 閱讀字體倍率（設定裡調整） */
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -157,7 +158,7 @@
   .result-card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; box-shadow: var(--shadow); border-left: 4px solid var(--primary); }
   .result-card.read-card { border-left-color: var(--accent); }
   .result-page { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-  .result-content { font-size: 15px; line-height: 1.8; white-space: pre-wrap; }
+  .result-content { font-size: calc(15px * var(--fs)); line-height: 1.8; white-space: pre-wrap; }
   .result-content .q { color: var(--primary); font-weight: 600; }
   .result-content .a { color: var(--text); }
 
@@ -188,7 +189,7 @@
   .para-segment:hover { background: #FFF0F3; }
   .para-segment.active { background: #FFD9E1; }
   /* 智慧陪讀：小老師的講解（藍）／提問（綠）泡泡，穿插在原文之間 */
-  .teacher-bubble { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; padding: 8px 12px; background: #E8F8F5; border: 1px solid #A7E3DA; border-radius: 12px; font-size: 14px; line-height: 1.7; color: #115E59; cursor: pointer; white-space: normal; }
+  .teacher-bubble { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; padding: 8px 12px; background: #E8F8F5; border: 1px solid #A7E3DA; border-radius: 12px; font-size: calc(14px * var(--fs)); line-height: 1.7; color: #115E59; cursor: pointer; white-space: normal; }
   .teacher-bubble.ask { background: #F5F3FF; border-color: #DDD6FE; color: #5B21B6; }
   .teacher-bubble.active { box-shadow: 0 0 0 2px var(--primary); }
   .teacher-bubble.ask.active { box-shadow: 0 0 0 2px #7C3AED; }
@@ -197,7 +198,7 @@
   .error-box { background: #FEF2F2; border: 1px solid #FECACA; border-radius: var(--radius); padding: 14px 16px; font-size: 14px; color: #DC2626; margin-top: 16px; }
 
   /* Markdown rendered output */
-  .md-body { font-size: 15px; line-height: 1.85; }
+  .md-body { font-size: calc(15px * var(--fs)); line-height: 1.85; }
   .md-body h1,.md-body h2,.md-body h3 { font-size: 15px; font-weight: 700; margin: 12px 0 4px; color: var(--primary); }
   .md-body p { margin-bottom: 10px; }
   .md-body ul,.md-body ol { padding-left: 20px; margin-bottom: 10px; }
@@ -218,11 +219,11 @@
   .mk-card.blank .mk-tag { background: #FFFBEB; color: #92400E; }
   .mk-concept { font-size: 12px; border-radius: 20px; padding: 2px 8px; background: #E8F8F5; color: #0F766E; }
   .mk-say { margin-left: auto; border: 1px solid var(--border); background: var(--card); border-radius: 50%; width: 40px; height: 40px; font-size: 18px; cursor: pointer; flex-shrink: 0; }
-  .mk-q { font-size: 16px; line-height: 1.7; margin-bottom: 4px; white-space: pre-wrap; }
-  .mk-line { font-size: 15px; margin-top: 6px; }
+  .mk-q { font-size: calc(16px * var(--fs)); line-height: 1.7; margin-bottom: 4px; white-space: pre-wrap; }
+  .mk-line { font-size: calc(15px * var(--fs)); margin-top: 6px; }
   .mk-ans { background: #FEE2E2; color: #DC2626; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
-  .mk-why { font-size: 14px; color: var(--muted); margin-top: 4px; line-height: 1.7; }
-  .mk-hint { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: 14px; color: #92400E; line-height: 1.7; }
+  .mk-why { font-size: calc(14px * var(--fs)); color: var(--muted); margin-top: 4px; line-height: 1.7; }
+  .mk-hint { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: calc(14px * var(--fs)); color: #92400E; line-height: 1.7; }
   .mk-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .mk-top { font-size: 13px; color: var(--accent); margin-top: 4px; }
   .mk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -246,6 +247,12 @@
   .history-item { display: flex; gap: 10px; align-items: center; }
   .history-item .h-text { flex: 1; min-width: 0; }
   .h-thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: #F3F4F6; flex-shrink: 0; }
+  /* 跟讀評分 */
+  .shadow-fb { display: block; margin: 8px 0; padding: 10px 12px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; white-space: normal; }
+  .sf-stars { font-size: 16px; font-weight: 700; color: #92400E; }
+  .sf-line { font-size: calc(17px * var(--fs)); line-height: 1.9; margin-top: 6px; }
+  .sf-ok { color: #0F766E; font-weight: 700; }
+  .sf-miss { color: #DC2626; font-weight: 700; text-decoration: underline wavy #FCA5A5; text-underline-offset: 4px; }
   .word-btn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
   .word-zh { font-size: 28px; font-weight: 700; color: var(--primary-dark); margin: 4px 0 8px; }
   #rdResults.word-mode .para-segment { text-decoration: underline dotted #0D9488; text-underline-offset: 4px; }
@@ -325,7 +332,7 @@
 
     /* Result cards full bleed */
     .result-card { padding: 14px 12px; border-radius: 10px; }
-    .result-content { font-size: 16px; line-height: 2; }
+    .result-content { font-size: calc(16px * var(--fs)); line-height: 2; }
 
     /* 播放器：狀態文字獨立一行，按鈕不被擠壓 */
     .player { top: 84px; padding: 8px 10px; }
@@ -553,9 +560,19 @@
   <section class="set-sec">
     <h3>🤖 模型</h3>
     <div class="set-row">
-      <select class="set-select" id="modelSelect" onchange="updateCostBadge()"></select>
+      <select class="set-select" id="modelSelect" onchange="onModelChange()"></select>
       <span class="cost-badge" id="costBadge">~$0.001 / 次</span>
     </div>
+  </section>
+
+  <section class="set-sec">
+    <h3>🔠 字體大小</h3>
+    <div class="mode-toggle" id="fontScale" style="margin:0">
+      <button class="mode-btn" data-fs="normal" onclick="setFontScale('normal')" style="font-size:14px">標準</button>
+      <button class="mode-btn" data-fs="large" onclick="setFontScale('large')" style="font-size:16px">大</button>
+      <button class="mode-btn" data-fs="xlarge" onclick="setFontScale('xlarge')" style="font-size:18px">特大</button>
+    </div>
+    <p class="set-hint">放大題目、說明和故事文字，方便孩子自己看。</p>
   </section>
 
   <section class="set-sec">
@@ -657,7 +674,7 @@
 <script>
 // ===== 版本 =====
 // 每次發版要同步：這裡、sw.js 的 CACHE、CHANGELOG.md 最上面那版（test_homie.mjs 會檢查三者一致）
-const APP_VERSION = 'v0.15.0';
+const APP_VERSION = 'v0.16.0';
 
 // ===== STATE =====
 let hwImages = [], rdImages = [];
@@ -747,6 +764,7 @@ window.onload = () => {
 };
 
 document.getElementById('appVersion').textContent = APP_VERSION;
+applyFontScale(lsGet('homie_font_scale', 'normal'));
 const gradeSel = document.getElementById('childGrade');
 gradeSel.value = lsGet('homie_child_grade', 'low');
 gradeSel.addEventListener('change', () => lsSet('homie_child_grade', gradeSel.value));
@@ -782,6 +800,9 @@ function switchProvider(p, silent) {
     opt.textContent = m.label;
     sel.appendChild(opt);
   });
+  // 選過的模型依供應商記住；清單裡已經沒有那個模型（下架）就用預設
+  const savedModel = lsGet('homie_model_' + p);
+  if (cfg.models.some(m => m.value === savedModel)) sel.value = savedModel;
   updateCostBadge();
 }
 
@@ -1030,6 +1051,11 @@ function toggleChip(el, group) {
 // ===== MODEL & COST =====
 function getSelectedModel() {
   return document.getElementById('modelSelect')?.value || 'gemini-3.8-flash';
+}
+
+function onModelChange() {
+  lsSet('homie_model_' + currentProvider, getSelectedModel());
+  updateCostBadge();
 }
 
 function updateCostBadge() {
@@ -2204,6 +2230,160 @@ function closeWord() {
   document.getElementById('wordBg').classList.remove('show');
 }
 
+// ===== 跟讀模式：AI 唸一句 → 孩子跟著唸 → 比對評分 =====
+// 語音辨識用 Chrome 內建的 SpeechRecognition（聲音會送到 Google 的語音服務處理）
+let shadowRec = null;       // 目前的辨識器
+let shadowState = null;     // 'listening' 聽孩子唸｜'done' 評完分等孩子決定
+const SHADOW_NOTICE = '🎤 跟讀：AI 唸一句，換孩子唸，唸完自動評分。第一次會請你允許使用麥克風。語音辨識由 Chrome 內建服務處理，孩子的聲音會送到 Google 辨識（照片不會）。';
+
+// 完整的麥克風／隱私說明只在第一次顯示，之後只留一行提示，不佔畫面
+function shadowNotice() {
+  if (!speechRecognitionCtor()) return '這個瀏覽器不支援語音辨識，跟讀模式請用 Android 的 Chrome。';
+  if (lsGet('homie_shadow_seen')) return '';
+  lsSet('homie_shadow_seen', '1');
+  return SHADOW_NOTICE;
+}
+
+function speechRecognitionCtor() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+
+// 比對用的「字」：中文一個字一個字、英文一個單字一個單字；標點不算。數字統一成國字（辨識常把「三」寫成 3）
+const ZH_DIGITS = '零一二三四五六七八九';
+function speechTokens(text, lang) {
+  const t = String(text).toLowerCase().replace(/[0-9]/g, d => lang === 'en' ? d : ZH_DIGITS[d]);
+  if (lang === 'en') return (t.match(/[a-z0-9']+/g) || []).map(w => w.replace(/'/g, ''));
+  return t.match(/[㐀-鿿a-z]/g) || [];
+}
+
+// 依最長共同子序列比對：原文每個字有沒有被唸到。回傳 { score: 0～1, marks: [{ t, ok|null }] }（ok=null 是標點）
+function compareSpeech(target, heard, lang) {
+  const want = speechTokens(target, lang), got = speechTokens(heard, lang);
+  const n = want.length, m = got.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    dp[i][j] = want[i] === got[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const okIdx = new Set();
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (want[i] === got[j]) { okIdx.add(i); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  // 把結果對回原文的顯示片段（含標點、大小寫）
+  const marks = [];
+  let k = 0;
+  const parts = lang === 'en' ? String(target).match(/[A-Za-z0-9']+|[^A-Za-z0-9']+/g) || [] : [...String(target)];
+  parts.forEach(p => {
+    const isTok = lang === 'en' ? /[A-Za-z0-9']/.test(p) : /[㐀-鿿A-Za-z0-9]/.test(p);
+    if (isTok) { marks.push({ t: p, ok: okIdx.has(k) }); k++; }
+    else marks.push({ t: p, ok: null });
+  });
+  return { score: n ? okIdx.size / n : 0, marks };
+}
+
+function shadowStars(score) { return score >= 0.85 ? 3 : score >= 0.6 ? 2 : 1; }
+
+function startListening(item, idx, session) {
+  const SR = speechRecognitionCtor();
+  if (!SR) {
+    pausePlayback();
+    showPlayerNotice('這個瀏覽器不支援語音辨識，跟讀模式請用 Android 的 Chrome。');
+    return;
+  }
+  stopListening();
+  shadowState = 'listening';
+  isPlaying = true;
+  playIdx = idx;
+  highlightItem(idx);
+  updatePlayerUI();
+  const rec = new SR();
+  shadowRec = rec;
+  rec.lang = currentReadLang === 'en' ? 'en-US' : 'zh-TW';
+  rec.interimResults = false;
+  rec.maxAlternatives = 5;   // 多要幾個候選，取最接近原文的（減少同音字誤判）
+  rec.continuous = false;
+  let finished = false;
+  rec.onresult = (e) => {
+    if (session !== playSession || finished) return;
+    const res = e.results[e.results.length - 1];
+    const alts = Array.from({ length: res.length }, (_, i) => res[i].transcript || '');
+    let best = { score: -1 };
+    alts.forEach(a => { const c = compareSpeech(item.text, a, currentReadLang); if (c.score > best.score) best = { ...c, heard: a }; });
+    finished = true;
+    showShadowResult(item, idx, session, best);
+  };
+  rec.onerror = (e) => {
+    if (session !== playSession || finished) return;
+    finished = true;
+    const msg = e.error === 'not-allowed' || e.error === 'service-not-allowed' ? '需要允許使用麥克風才能跟讀（網址列左邊的設定可以打開）。'
+      : e.error === 'no-speech' ? '沒有聽到聲音，按「再唸一次」重新開始。'
+      : e.error === 'network' ? '語音辨識需要網路，請確認連線後再試。'
+      : '語音辨識失敗，按「再唸一次」重新開始。';
+    showShadowResult(item, idx, session, null, msg);
+  };
+  rec.onend = () => {
+    if (session !== playSession || finished) return;
+    finished = true;
+    showShadowResult(item, idx, session, null, '沒有聽到聲音，按「再唸一次」重新開始。');
+  };
+  try { rec.start(); } catch (e) { rec.onerror({ error: 'start' }); }
+}
+
+function stopListening() {
+  if (!shadowRec) return;
+  const r = shadowRec;
+  shadowRec = null;
+  r.onresult = r.onerror = r.onend = null;
+  try { r.abort(); } catch (e) {}
+}
+
+function showShadowResult(item, idx, session, result, errMsg) {
+  stopListening();
+  shadowState = 'done';
+  isPlaying = false;
+  playIdx = idx + 1;   // 按 ▶ 就是下一句
+  document.querySelectorAll('#rdResults .shadow-fb').forEach(el => el.remove());
+  const fb = document.createElement('div');
+  fb.className = 'shadow-fb';
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  let stars = 0;
+  if (result) {
+    stars = shadowStars(result.score);
+    fb.append(el('div', 'sf-stars', '⭐'.repeat(stars) + '　' + (stars === 3 ? '太棒了！' : stars === 2 ? '很好，再加油一點點！' : '再試一次看看！')));
+    const line = el('div', 'sf-line');
+    result.marks.forEach(mk => line.append(mk.ok === null ? mk.t : el('span', mk.ok ? 'sf-ok' : 'sf-miss', mk.t)));
+    fb.append(line);
+    if (result.heard) fb.append(el('div', 'mk-why', '聽到：' + result.heard));
+  } else {
+    fb.append(el('div', 'sf-stars', errMsg));
+  }
+  const acts = el('div', 'mk-actions');
+  const btn = (text, cls, fn) => { const b = el('button', 'mk-btn' + (cls ? ' ' + cls : ''), text); b.onclick = fn; acts.append(b); };
+  btn('🔁 再唸一次', 'warm', () => { const s = ++playSession; startListening(item, idx, s); });
+  btn('🔊 再聽一次', '', () => playFrom(idx));
+  if (idx + 1 < playlist.length) btn('▶ 下一句', 'primary', () => playFrom(idx + 1));
+  fb.append(acts);
+  item.el.after(fb);
+  updatePlayerUI();
+  showPlayerNotice('');   // 第一次的說明看過了，收起來讓出畫面
+  const r = fb.getBoundingClientRect();
+  const topLimit = (activeRoot()?.getBoundingClientRect().bottom || 0) + 8;
+  if (r.top < topLimit || r.bottom > window.innerHeight - 100) fb.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // 三顆星自動接下一句
+  if (stars === 3 && idx + 1 < playlist.length) {
+    setTimeout(() => { if (session === playSession && shadowState === 'done' && playIdx === idx + 1) playFrom(idx + 1); }, 1500);
+  }
+}
+
+// ===== 字體大小（只放大閱讀內容，按鈕和選單維持原樣）=====
+// 頁面一載入就會呼叫，倍率表放在函式裡（避免用到還沒初始化的 const）
+function applyFontScale(key) {
+  const scales = { normal: 1, large: 1.2, xlarge: 1.4 };
+  const k = scales[key] ? key : 'normal';
+  document.documentElement.style.setProperty('--fs', String(scales[k]));
+  document.querySelectorAll('#fontScale .mode-btn').forEach(b => b.classList.toggle('on', b.dataset.fs === k));
+  return k;
+}
+function setFontScale(key) { lsSet('homie_font_scale', applyFontScale(key)); }
+
 // 從渲染好的 markdown 取出要唸的段落：只取最內層的區塊（<li><p> 只唸 <p>），避免重複唸
 function collectSpeakBlocks(root) {
   const SEL = 'h1,h2,h3,h4,p,li,blockquote';
@@ -2343,6 +2523,7 @@ function renderReadingResult(text, readLang, companion) {
   activatePlayer('rd');
   stopTTS();
   wordMode = false;
+  shadowState = null;
   document.getElementById('rdResults').classList.remove('word-mode');
   companionNotes = null;
   const resultsEl = document.getElementById('rdResults');
@@ -2429,6 +2610,7 @@ function buildPlayer(prefix) {
     ${prefix === 'rd' ? `<div class="mode-toggle">
       <button class="mode-btn" data-mode="plain" onclick="setReadMode('plain')">📖 純朗讀</button>
       <button class="mode-btn" data-mode="companion" onclick="setReadMode('companion')">🧑‍🏫 智慧陪讀</button>
+      <button class="mode-btn" data-mode="shadow" onclick="setReadMode('shadow')">🎤 跟讀</button>
     </div>` : ''}
     <div class="player-main">
       <button class="pl-btn" onclick="skipItem(-1)" title="上一${unitOf(prefix)}" aria-label="上一${unitOf(prefix)}">⏮</button>
@@ -2678,7 +2860,10 @@ function setReadMode(mode) {
   playIdx = seg === undefined ? -1 : playlist.findIndex(it => it.kind === 'read' && it.seg === seg);
   highlightItem(playIdx);
   updatePlayerUI();
-  showPlayerNotice(mode === 'companion' && !companionNotes ? COMPANION_HINT : '');
+  document.querySelectorAll('#rdResults .shadow-fb').forEach(el => el.remove());
+  showPlayerNotice(mode === 'companion' && !companionNotes ? COMPANION_HINT
+    : mode === 'shadow' ? shadowNotice()
+    : '');
 }
 
 // ===== 智慧陪讀：請 AI 備課 =====
@@ -2821,6 +3006,8 @@ function speakCurrent(session) {
   updatePlayerUI();
   speakItem(item, session, () => {
     if (session !== playSession) return;
+    // 跟讀：AI 唸完這句，換孩子唸
+    if (readMode === 'shadow' && activePrefix === 'rd' && item.kind === 'read') { startListening(item, playIdx, session); return; }
     playIdx++;
     // 小老師問完問題就停下來，讓孩子有時間回答（提問泡泡維持高亮）
     if (item.kind === 'ask' && playIdx < playlist.length) {
@@ -2840,6 +3027,8 @@ function speakItem(item, session, done) {
 }
 
 function haltSpeech() {
+  stopListening();
+  shadowState = null;
   if (ttsAudio) { ttsAudio.onended = null; ttsAudio.onerror = null; ttsAudio.pause(); }
   isLoading = false;
   if (!window.speechSynthesis) return;   // 少數瀏覽器沒有語音合成 API
@@ -3151,7 +3340,10 @@ function updatePlayerUI() {
   const unit = unitOf(activePrefix);
   const cur = playlist[playIdx];
   const pos = Math.max(1, playlist.slice(0, playIdx + 1).filter(it => it.kind === 'read').length);
-  st.textContent = waitingAnswer && !isPlaying ? '🙋 換小朋友回答囉！說完再按 ▶ 繼續'
+  st.textContent = shadowState === 'listening' ? '🎤 換你唸了！唸完會自動評分'
+    : readMode === 'shadow' && activePrefix === 'rd' && playIdx < 0 ? '🎤 跟讀：AI 唸一句，換你跟著唸'
+    : shadowState === 'done' ? '按「下一句」或 ▶ 繼續'
+    : waitingAnswer && !isPlaying ? '🙋 換小朋友回答囉！說完再按 ▶ 繼續'
     : isPlaying && isLoading ? '⏳ 產生語音中…'
     : isPlaying && cur && cur.kind !== 'read' ? '🧑‍🏫 小老師說話中…'
     : playIdx >= 0 && total ? `第 ${pos} / ${total} ${unit}${isPlaying ? '' : '（已暫停）'}`
