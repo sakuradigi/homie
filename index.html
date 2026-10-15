@@ -282,6 +282,8 @@
   .history-item { background: var(--card); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; border: 1px solid var(--border); transition: border 0.2s; }
   .history-item:hover { border-color: var(--primary); }
   .history-item .h-meta { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .h-del { background: none; border: none; color: var(--muted); font-size: 16px; padding: 6px 8px; cursor: pointer; flex-shrink: 0; }
+  .h-clear { background: none; border: none; color: var(--muted); font-size: 13px; text-decoration: underline; cursor: pointer; padding: 6px 0; font-family: inherit; }
   .history-item .h-preview { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Capture overlay (bottom sheet after camera shot) */
@@ -674,7 +676,7 @@
 <script>
 // ===== 版本 =====
 // 每次發版要同步：這裡、sw.js 的 CACHE、CHANGELOG.md 最上面那版（test_homie.mjs 會檢查三者一致）
-const APP_VERSION = 'v0.16.0';
+const APP_VERSION = 'v0.17.0';
 
 // ===== STATE =====
 let hwImages = [], rdImages = [];
@@ -754,6 +756,7 @@ window.onload = () => {
     document.getElementById('introHero').style.display = 'none';
   }
   switchProvider(currentProvider, true);
+  syncPlayerPrefs();   // 一開頁面就填好語音引擎／聲音（不必等第一次出現結果）
   receiveShared();
   if (window.speechSynthesis) {
     window.speechSynthesis.onvoiceschanged = () => populateVoices(currentReadLang);
@@ -1089,10 +1092,37 @@ async function callAI(prompt, images, onChunk, signal) {
   return out;
 }
 
+// 把供應商的錯誤（多半是英文）轉成家長看得懂的中文；原始訊息附在括號裡方便除錯
 async function apiError(res, providerName) {
-  if (res.status === 429) return new Error('請求太頻繁，請等一分鐘再試');
+  if (res.status === 429) return new Error('請求太頻繁或免費額度用完了，請等一分鐘再試');
   const e = await res.json().catch(() => ({}));
-  return new Error(e.error?.message || `${providerName} 請求失敗（HTTP ${res.status}）`);
+  const raw = String(e.error?.message || '').slice(0, 120);
+  let msg;
+  if (res.status === 401 || res.status === 403 || /api[ _-]?key|x-api-key|authentication|unauthori[sz]ed|permission/i.test(raw))
+    msg = `${providerName} 金鑰無效或沒有權限，請到 ⚙️ 設定確認金鑰`;
+  else if (/billing|quota|credit|insufficient|balance/i.test(raw))
+    msg = `${providerName} 帳戶額度不足，請到供應商後台確認`;
+  else if (res.status === 404 || /model.*(not found|does not exist|not supported)|not_found/i.test(raw))
+    msg = `${providerName} 找不到這個模型，請到 ⚙️ 設定換一個模型`;
+  else if (res.status >= 500)
+    msg = `${providerName} 服務暫時忙碌，請稍後再試`;
+  else msg = `${providerName} 請求失敗（HTTP ${res.status}）`;
+  return new Error(raw ? `${msg}（${raw}）` : msg);
+}
+
+// 斷網時瀏覽器只會丟英文的「Failed to fetch」，換成中文
+function friendlyError(e) {
+  const msg = String((e && e.message) || e || '');
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(msg)) return '網路連線失敗，請確認網路後再試一次';
+  return msg || '發生錯誤，請再試一次';
+}
+
+// 錯誤／取消訊息一律用 textContent 放進畫面（訊息可能來自外部服務）
+function statusBox(e, cancelText) {
+  const box = document.createElement('div');
+  if (e && e.name === 'AbortError') { box.className = 'notice-box'; box.textContent = cancelText; }
+  else { box.className = 'error-box'; box.textContent = '❌ ' + friendlyError(e); }
+  return box;
 }
 
 // 逐行解析 SSE stream，把每個 data: JSON 交給 onData
@@ -1280,7 +1310,7 @@ status 只能是 correct（答對）、wrong（寫錯）、blank（沒寫）。�
       ? '這次沒有產出內容（模型思考用光了額度）。請減少頁數或換較快的模型再試一次。'
       : '回應為空，請再試一次');
     resultsEl.innerHTML = '';
-    const ts = saveHistory('hw', text, null, userHint);
+    const ts = saveHistory('hw', text, null, userHint, splitHomework(text).data?.subject);
     renderHomeworkResult(text, userHint, lastResponseTruncated, ts);
     const note = costNote();
     if (note) resultsEl.querySelector('.result-card')?.appendChild(note);
@@ -1288,9 +1318,8 @@ status 只能是 correct（答對）、wrong（寫錯）、blank（沒寫）。�
     loadHistoryUI('hw');
     addMistakesFromResult(currentHw.data, ts);
   } catch (e) {
-    resultsEl.innerHTML = e.name === 'AbortError'
-      ? `<div class="notice-box">⏹ 已取消。照片都還在，可以調整後重新開始。</div>`
-      : `<div class="error-box">❌ ${e.message}</div>`;
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(statusBox(e, '⏹ 已取消。照片都還在，可以調整後重新開始。'));
   } finally {
     aiAbort.hw = null;
     btn.innerHTML = `<span>🔍</span> <span>重新解題</span>`;
@@ -1556,11 +1585,18 @@ async function mkDelete(id) {
 }
 
 // 新的解題結果：寫錯和沒寫的題目收進錯題本（id = 那次結果的時間 + 題目序號，重看歷史不會重複收）
+function mkSameKey(r) { return (String(r.question || r.no) + '|' + String(r.answer)).replace(/\s+/g, ''); }
 async function addMistakesFromResult(data, ts) {
   if (!data) return;
+  const existing = new Map((await mkAll()).map(r => [mkSameKey(r), r]));
   const records = data.items.map((it, i) => ({ ...it, id: `${ts}-${i}` }))
     .filter(it => it.status !== 'correct')
-    .map(it => ({ ...it, ts, subject: data.subject || selectedSubject || '作業', state: 'open', practiced: 0, corrected: null }));
+    .map(it => {
+      const old = existing.get(mkSameKey(it));
+      // 同一題又錯：沿用原本那筆（保留練習次數），更新時間、放回待練習
+      if (old) return { ...old, ...it, id: old.id, ts, state: 'open', corrected: null, practiced: old.practiced || 0, subject: old.subject };
+      return { ...it, ts, subject: data.subject || selectedSubject || '作業', state: 'open', practiced: 0, corrected: null };
+    });
   if (records.length) await mkPut(records);
 }
 
@@ -1678,7 +1714,7 @@ async function openPractice(item) {
     body.innerHTML = '';
     const err = document.createElement('div');
     err.className = 'error-box';
-    err.textContent = '❌ ' + e.message;
+    err.textContent = '❌ ' + friendlyError(e);
     body.append(err);
   }
 }
@@ -1778,10 +1814,7 @@ ${list}
     reviewItems = null;
     document.getElementById('hwReviewBar').style.display = 'none';
   } catch (e) {
-    const box = document.createElement('div');
-    box.className = e.name === 'AbortError' ? 'notice-box' : 'error-box';
-    box.textContent = e.name === 'AbortError' ? '⏹ 已取消複查。' : '❌ ' + e.message;
-    resultsEl.prepend(box);
+    resultsEl.prepend(statusBox(e, '⏹ 已取消複查。'));
   } finally {
     aiAbort.hw = null;
     hideProgress('hw');
@@ -2207,7 +2240,7 @@ async function lookupWord(word, sentence) {
       if (keys.length > 300) delete cache[keys[0]];   // 只留最近 300 個字
       lsSet('homie_words', JSON.stringify(cache));
     } catch (e) {
-      body.textContent = '❌ ' + e.message;
+      body.textContent = '❌ ' + friendlyError(e);
       return;
     }
   }
@@ -2447,12 +2480,17 @@ ${langInstr}。
     currentRdHistoryTs = saveHistory('rd', text, readLang);
     const note = costNote();
     if (note) resultsEl.querySelector('.read-card')?.appendChild(note);
+    if (lastResponseTruncated) {
+      const warn = document.createElement('div');
+      warn.className = 'notice-box';
+      warn.textContent = '⚠️ 內容較長，最後幾頁可能沒有辨識完。建議一次拍少一點頁數再辨識。';
+      resultsEl.querySelector('.new-q-btn')?.before(warn);
+    }
     saveThumb(currentRdHistoryTs, rdImages).then(() => loadHistoryUI('rd'));
     loadHistoryUI('rd');
   } catch (e) {
-    resultsEl.innerHTML = e.name === 'AbortError'
-      ? `<div class="notice-box">⏹ 已取消。照片都還在，可以調整後重新開始。</div>`
-      : `<div class="error-box">❌ ${e.message}</div>`;
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(statusBox(e, '⏹ 已取消。照片都還在，可以調整後重新開始。'));
   } finally {
     aiAbort.rd = null;
     btn.innerHTML = `<span>🔊</span> <span>重新擷取</span>`;
@@ -2933,7 +2971,7 @@ async function generateCompanion() {
     buildPlaylist();
     showPlayerNotice(`小老師準備好了：穿插 ${notes.length} 段講解和提問。按 ▶ 播放開始陪讀！`);
   } catch (e) {
-    if (book === currentSegments) showPlayerNotice('❌ 陪讀內容產生失敗：' + e.message);
+    if (book === currentSegments) showPlayerNotice('❌ 陪讀內容產生失敗：' + friendlyError(e));
   } finally {
     btn.disabled = false;
     updateModeUI();
@@ -3293,7 +3331,7 @@ function cloudFailed(e, item, session, done) {
   const sel = document.getElementById('ttsEngine');
   if (sel) sel.value = 'browser';   // 只改畫面不存設定，下次打開仍會先試 AI 語音
   populateVoices(currentReadLang);
-  showPlayerNotice(`AI 語音暫時無法使用（${e.message || e}），先改用手機內建語音。可在選單切回 AI 語音再試。`);
+  showPlayerNotice(`AI 語音暫時無法使用（${friendlyError(e)}），先改用手機內建語音。可在選單切回 AI 語音再試。`);
   speakBrowser(item, session, done);
 }
 
@@ -3388,14 +3426,14 @@ const MAX_HISTORY = 30;
 })();
 
 // 回傳這筆紀錄的 ts（繪本之後產生陪讀內容時，用它找回這筆存進去）
-function saveHistory(prefix, text, readLang, hint) {
+function saveHistory(prefix, text, readLang, hint, subject) {
   const key = HISTORY_KEY[prefix];
   let arr = [];
   try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
   const ts = Date.now();
   arr.unshift({
     ts,
-    subject: prefix === 'hw' ? (selectedSubject || '作業') : '繪本',
+    subject: prefix === 'hw' ? (selectedSubject || subject || '作業') : '繪本',
     // 去掉 markdown 與 HTML 標籤，預覽才不會出現 <mark> 這種字樣
     preview: stripJsonTail(text).replace(/<[^>]*>/g, '').replace(/[#*`>\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80),
     full: text,
@@ -3443,10 +3481,32 @@ function loadHistoryUI(prefix) {
     const txt = document.createElement('div');
     txt.className = 'h-text';
     txt.append(meta, prev);
-    div.append(thumb, txt);
+    const del = document.createElement('button');
+    del.className = 'h-del';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', '刪除這筆紀錄');
+    del.onclick = (e) => { e.stopPropagation(); deleteHistory(prefix, [item.ts]); };
+    div.append(thumb, txt, del);
     div.onclick = () => restoreHistory(prefix, item);
     listEl.appendChild(div);
   });
+  const clear = document.createElement('button');
+  clear.className = 'h-clear';
+  clear.textContent = '清除全部紀錄';
+  clear.onclick = () => deleteHistory(prefix, arr.map(x => x.ts), true);
+  listEl.appendChild(clear);
+}
+
+// 刪除歷史紀錄（縮圖一起刪；錯題本不受影響）
+function deleteHistory(prefix, tsList, all) {
+  if (!confirm(all ? '清除全部紀錄？（錯題本不受影響）' : '刪除這筆紀錄？')) return;
+  const key = HISTORY_KEY[prefix];
+  let arr = [];
+  try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) {}
+  const drop = new Set(tsList);
+  try { localStorage.setItem(key, JSON.stringify(arr.filter(x => !drop.has(x.ts)))); } catch (e) {}
+  deleteThumbs(tsList);
+  loadHistoryUI(prefix);
 }
 
 function restoreHistory(prefix, item) {

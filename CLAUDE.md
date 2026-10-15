@@ -33,6 +33,6 @@
 | `about.html` | 介紹／銷售子頁 |
 | `sw.js` / `manifest.json` | PWA |
 | `CHANGELOG.md` | 版本紀錄（每次修改必更） |
-| `OPTIMIZATION_REVIEW.md` | 2026-07-06 程式碼審查報告 |
+| `OPTIMIZATION_REVIEW.md` | 架構現況、待實機驗證項目、待辦清單 |
 | `deploy.sh` | 一鍵部署（含 CHANGELOG 檢查、自動打版本標籤） |
 | `test_homie.mjs` | jsdom 行為測試（`npm i --no-save jsdom dompurify fake-indexeddb && node test_homie.mjs`） |

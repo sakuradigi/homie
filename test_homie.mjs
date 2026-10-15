@@ -75,7 +75,8 @@ window.__T = {
   version: () => APP_VERSION,
   lastCost: () => lastCost,
   wordMode: () => wordMode,
-  shadow: () => shadowState
+  shadow: () => shadowState,
+  setTruncated: (v) => { lastResponseTruncated = v; }
 };`);
 
 const T = win.__T;
@@ -1029,6 +1030,54 @@ delete win.SpeechRecognition;
 win.setReadMode('shadow');
 check('不支援語音辨識的瀏覽器會提示', doc.getElementById('plNotice').textContent.includes('不支援語音辨識'));
 win.setReadMode('plain');
+
+// ── 25. 檢查修正：錯誤訊息、錯題不重複、歷史科目與刪除 ─────
+const fakeRes = (status, message) => ({ status, json: async () => (message ? { error: { message } } : {}) });
+check('金鑰錯誤轉成中文', (await win.apiError(fakeRes(400, 'API key not valid. Please pass a valid API key.'), 'Gemini')).message.startsWith('Gemini 金鑰無效'));
+check('找不到模型轉成中文', (await win.apiError(fakeRes(404, 'models/xyz is not found'), 'Gemini')).message.includes('找不到這個模型'));
+check('服務忙碌轉成中文', (await win.apiError(fakeRes(503, ''), 'Claude')).message === 'Claude 服務暫時忙碌，請稍後再試');
+check('額度不足轉成中文', (await win.apiError(fakeRes(400, 'Your credit balance is too low'), 'Claude')).message.includes('額度不足'));
+check('斷網訊息轉成中文', win.friendlyError(new TypeError('Failed to fetch')) === '網路連線失敗，請確認網路後再試一次');
+T.setImages(1);
+T.stubCallAI(async () => { throw new Error('<img src=x onerror=alert(1)>壞掉了'); });
+await win.runHomework();
+check('錯誤訊息不會注入 HTML', !doc.querySelector('#hwResults img') && doc.querySelector('#hwResults .error-box').textContent.includes('<img src=x'));
+
+// 同一份作業再跑一次，錯題本不重複
+await win.mkAll().then(all => Promise.all(all.map(r => win.mkDelete(r.id))));
+T.stubCallAI(async () => HW_REPLY);
+await win.runHomework(); await sleep(50);
+await win.runHomework(); await sleep(50);
+let mk25 = await win.mkAll();
+check('同一題再錯不會重複收錄', mk25.length === 2, String(mk25.length));
+await win.mkPut(mk25.map(r => ({ ...r, state: 'mastered', practiced: 2 })));
+await win.runHomework(); await sleep(50);
+mk25 = await win.mkAll();
+check('學會的題目又錯：放回待練習、保留練習次數', mk25.length === 2 && mk25.every(r => r.state === 'open' && r.practiced === 2));
+
+// 歷史紀錄科目用 AI 判斷的
+const h25 = JSON.parse(win.localStorage.getItem('homie_hw_history'))[0];
+check('自動判斷時歷史記下 AI 判斷的科目', h25.subject === '數學', h25.subject);
+
+// 刪除歷史紀錄
+win.confirm = () => true;
+await win.dbTx('thumbs', 'readwrite', st => { st.put({ ts: h25.ts, thumb: 'data:,x' }); });
+win.loadHistoryUI('hw');
+const before25 = JSON.parse(win.localStorage.getItem('homie_hw_history')).length;
+doc.querySelector('#hwHistoryList .h-del').click();
+await sleep(30);
+const after25 = JSON.parse(win.localStorage.getItem('homie_hw_history'));
+check('刪除單筆歷史紀錄', after25.length === before25 - 1 && !after25.some(x => x.ts === h25.ts));
+check('刪除紀錄時縮圖一起刪', !(await win.getThumb(h25.ts)));
+check('錯題本不受影響', (await win.mkAll()).length === 2);
+doc.querySelector('#hwHistoryList .h-clear').click();
+check('清除全部紀錄', JSON.parse(win.localStorage.getItem('homie_hw_history')).length === 0);
+
+// 繪本辨識被截斷時提醒
+T.setRdImages(1);
+T.stubCallAI(async () => { T.setTruncated(true); return '===第1頁===\n小熊。'; });
+await win.runReading();
+check('繪本辨識被截斷時提醒', [...doc.querySelectorAll('#rdResults .notice-box')].some(n => n.textContent.includes('可能沒有辨識完')));
 
 // ── 22. 版本號一致 ───────────────────────────────────
 const ver = T.version();
